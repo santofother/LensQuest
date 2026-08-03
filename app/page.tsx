@@ -300,6 +300,162 @@ function WorldGuessMap({
   );
 }
 
+function PhotoClue({
+  location,
+  revealed,
+  photoNumber,
+  photoTotal,
+}: {
+  location: GameLocation;
+  revealed: boolean;
+  photoNumber: number;
+  photoTotal: number;
+}) {
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const viewerRef = useRef<HTMLDivElement>(null);
+  const dragRef = useRef({ active: false, startX: 0, startY: 0, panX: 0, panY: 0 });
+
+  function constrainedPan(next: { x: number; y: number }, atZoom = zoom) {
+    const bounds = viewerRef.current?.getBoundingClientRect();
+    if (!bounds || atZoom <= 1) return { x: 0, y: 0 };
+    const maxX = (bounds.width * (atZoom - 1)) / 2;
+    const maxY = (bounds.height * (atZoom - 1)) / 2;
+    return {
+      x: Math.max(-maxX, Math.min(maxX, next.x)),
+      y: Math.max(-maxY, Math.min(maxY, next.y)),
+    };
+  }
+
+  useEffect(() => {
+    setZoom(1);
+    setPan({ x: 0, y: 0 });
+  }, [location.id]);
+
+  useEffect(() => {
+    const viewer = viewerRef.current;
+    if (!viewer) return;
+
+    function handleWheel(event: WheelEvent) {
+      event.preventDefault();
+
+      if (!event.ctrlKey && Math.abs(event.deltaX) > Math.abs(event.deltaY) * 1.15 && zoom > 1) {
+        setPan(constrainedPan({ x: pan.x - event.deltaX, y: pan.y - event.deltaY }));
+        return;
+      }
+
+      if (event.deltaY === 0) return;
+      const direction = event.deltaY < 0 ? 1 : -1;
+      const step = Math.max(0.16, Math.min(0.7, Math.abs(event.deltaY) / 190));
+      const nextZoom = Math.max(1, Math.min(6, Number((zoom + direction * step).toFixed(2))));
+      if (nextZoom === zoom) return;
+
+      const bounds = viewer.getBoundingClientRect();
+      const pointerX = event.clientX - bounds.left;
+      const pointerY = event.clientY - bounds.top;
+      const imageX = (pointerX - bounds.width / 2 - pan.x) / zoom;
+      const imageY = (pointerY - bounds.height / 2 - pan.y) / zoom;
+      const nextPan = {
+        x: pointerX - bounds.width / 2 - imageX * nextZoom,
+        y: pointerY - bounds.height / 2 - imageY * nextZoom,
+      };
+
+      setZoom(nextZoom);
+      setPan(constrainedPan(nextPan, nextZoom));
+    }
+
+    viewer.addEventListener("wheel", handleWheel, { passive: false });
+    return () => viewer.removeEventListener("wheel", handleWheel);
+  }, [zoom, pan.x, pan.y]);
+
+  function changeZoom(change: number) {
+    const nextZoom = Math.max(1, Math.min(6, Number((zoom + change).toFixed(1))));
+    setZoom(nextZoom);
+    setPan((current) => constrainedPan(current, nextZoom));
+  }
+
+  function resetView() {
+    setZoom(1);
+    setPan({ x: 0, y: 0 });
+  }
+
+  function handlePointerDown(event: React.PointerEvent<HTMLDivElement>) {
+    if (zoom <= 1) return;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    dragRef.current = {
+      active: true,
+      startX: event.clientX,
+      startY: event.clientY,
+      panX: pan.x,
+      panY: pan.y,
+    };
+  }
+
+  function handlePointerMove(event: React.PointerEvent<HTMLDivElement>) {
+    const drag = dragRef.current;
+    if (!drag.active) return;
+    setPan(constrainedPan({
+      x: drag.panX + event.clientX - drag.startX,
+      y: drag.panY + event.clientY - drag.startY,
+    }));
+  }
+
+  function handlePointerUp(event: React.PointerEvent<HTMLDivElement>) {
+    if (!dragRef.current.active) return;
+    dragRef.current.active = false;
+    event.currentTarget.releasePointerCapture(event.pointerId);
+  }
+
+  return (
+    <article className="photo-stage">
+      <div
+        ref={viewerRef}
+        className={`photo-stage__viewer ${zoom > 1 ? "photo-stage__viewer--zoomed" : ""}`}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerUp}
+      >
+        <div
+          className="photo-stage__canvas"
+          style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` }}
+        >
+          <img src={location.imageUrl} alt={location.alt} draggable={false} />
+        </div>
+      </div>
+      <div className="photo-stage__topline">
+        <span>{revealed ? location.region : "Somewhere on Earth"}</span>
+        <span>Photo {photoNumber}/{photoTotal}</span>
+      </div>
+      <div className="photo-zoom-controls" aria-label="Photo zoom controls">
+        <button type="button" onClick={() => changeZoom(-0.5)} disabled={zoom <= 1} aria-label="Zoom photo out">−</button>
+        <span>{zoom.toFixed(1)}×</span>
+        <button type="button" onClick={() => changeZoom(0.5)} disabled={zoom >= 6} aria-label="Zoom photo in">+</button>
+        <button type="button" onClick={resetView} disabled={zoom === 1 && pan.x === 0 && pan.y === 0}>Reset</button>
+      </div>
+      <span className="photo-zoom-hint">Scroll to zoom · drag to pan</span>
+      <div className="photo-stage__caption">
+        <div>
+          <span className="caption-label">Clue photograph</span>
+          {revealed ? (
+            <a href={location.sourceUrl} target="_blank" rel="noreferrer">
+              {location.credit} ↗
+            </a>
+          ) : (
+            <span className="credit-hidden">Photographer revealed after both guesses</span>
+          )}
+        </div>
+        {revealed && (
+          <div className="location-reveal">
+            <span>Approximate location</span>
+            <strong>{location.name}</strong>
+          </div>
+        )}
+      </div>
+    </article>
+  );
+}
+
 export default function Home() {
   const [phase, setPhase] = useState<GamePhase>("setup");
   const [modeId, setModeId] = useState<(typeof HEALTH_MODES)[number]["id"]>("classic");
@@ -331,8 +487,9 @@ export default function Home() {
         return response.json() as Promise<GameLocation[]>;
       })
       .then((locations) => {
-        if (!active || locations.length !== 9988) throw new Error("Location library is incomplete");
-        setLocationPool([...GAME_LOCATIONS, ...locations]);
+        const outsidePhotoCount = 10000 - GAME_LOCATIONS.length;
+        if (!active || locations.length < outsidePhotoCount) throw new Error("Location library is incomplete");
+        setLocationPool([...GAME_LOCATIONS, ...locations.slice(0, outsidePhotoCount)]);
         setLibraryState("ready");
       })
       .catch(() => {
@@ -433,7 +590,7 @@ export default function Home() {
       setPhase("gameover");
       return;
     }
-    if (round % deck.length === 0) setDeck(shuffle(GAME_LOCATIONS));
+    if (round % deck.length === 0) setDeck(shuffle(locationPool));
     setRound((value) => value + 1);
     setPlayerPoint(null);
     setBotPoint(null);
@@ -555,31 +712,12 @@ export default function Home() {
       </section>
 
       <section className="game-grid">
-        <article className="photo-stage">
-          <img src={location.imageUrl} alt={location.alt} />
-          <div className="photo-stage__topline">
-            <span>{phase === "reveal" ? location.region : "Somewhere on Earth"}</span>
-            <span>Photo {((round - 1) % deck.length) + 1}/{deck.length}</span>
-          </div>
-          <div className="photo-stage__caption">
-            <div>
-              <span className="caption-label">Clue photograph</span>
-              {phase === "reveal" ? (
-                <a href={location.sourceUrl} target="_blank" rel="noreferrer">
-                  {location.credit} ↗
-                </a>
-              ) : (
-                <span className="credit-hidden">Photographer revealed after both guesses</span>
-              )}
-            </div>
-            {phase === "reveal" && (
-              <div className="location-reveal">
-                <span>Approximate location</span>
-                <strong>{location.name}</strong>
-              </div>
-            )}
-          </div>
-        </article>
+        <PhotoClue
+          location={location}
+          revealed={phase === "reveal"}
+          photoNumber={((round - 1) % deck.length) + 1}
+          photoTotal={deck.length}
+        />
 
         <aside className="guess-panel">
           <div className="guess-panel__heading">
