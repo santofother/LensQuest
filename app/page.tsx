@@ -44,6 +44,44 @@ function shuffle<T>(items: readonly T[]) {
   return [...items].sort(() => Math.random() - 0.5);
 }
 
+function worldRegion({ lat, lng }: Coordinates) {
+  if (lat < -60) return "Antarctica";
+  if (lat >= 7 && lat <= 33 && lng >= -120 && lng <= -58) return "Central America & Caribbean";
+  if (lat >= -56 && lat <= 13 && lng >= -82 && lng <= -34) return "South America";
+  if (lat >= -35 && lat <= 37 && lng >= -18 && lng <= 52 && (lng <= 35 || lat < 15)) return "Africa";
+  if (lat >= -50 && lat <= 0 && (lng >= 110 || lng <= -150)) return "Oceania";
+  if (lat >= 35 && lat <= 72 && lng >= -25 && lng <= 60 && (lng <= 30 || lat >= 50)) return "Europe";
+  if (lat >= -10 && lat <= 80 && lng >= 25 && lng <= 180) return "Asia";
+  if (lat >= 7 && lat <= 85 && lng >= -170 && lng <= -50) return "North America";
+  return "Other";
+}
+
+function balancedShuffle(items: readonly GameLocation[]) {
+  const buckets = new Map<string, GameLocation[]>();
+
+  shuffle(items).forEach((item) => {
+    const region = worldRegion(item);
+    buckets.set(region, [...(buckets.get(region) ?? []), item]);
+  });
+
+  const regions = shuffle([...buckets.keys()]);
+  const result: GameLocation[] = [];
+  let hasPhotos = true;
+
+  while (hasPhotos) {
+    hasPhotos = false;
+    shuffle(regions).forEach((region) => {
+      const photo = buckets.get(region)?.pop();
+      if (photo) {
+        result.push(photo);
+        hasPhotos = true;
+      }
+    });
+  }
+
+  return result;
+}
+
 function radians(value: number) {
   return (value * Math.PI) / 180;
 }
@@ -469,7 +507,7 @@ export default function Home() {
   const [botId, setBotId] = useState<(typeof BOT_LEVELS)[number]["id"]>("rival");
   const [locationPool, setLocationPool] = useState<GameLocation[]>([...GAME_LOCATIONS]);
   const [libraryState, setLibraryState] = useState<"loading" | "ready" | "fallback">("loading");
-  const [deck, setDeck] = useState<GameLocation[]>(() => shuffle(GAME_LOCATIONS));
+  const [deck, setDeck] = useState<GameLocation[]>(() => balancedShuffle(GAME_LOCATIONS));
   const [round, setRound] = useState(1);
   const [playerHealth, setPlayerHealth] = useState(7000);
   const [botHealth, setBotHealth] = useState(7000);
@@ -488,13 +526,23 @@ export default function Home() {
 
   useEffect(() => {
     let active = true;
-    fetch("/commons-locations.json")
-      .then((response) => {
-        if (!response.ok) throw new Error("Location library unavailable");
-        return response.json() as Promise<GameLocation[]>;
-      })
-      .then((locations) => {
-        const playableLocations = locations.filter(hasPlayableCoordinates);
+    Promise.all(
+      ["/commons-locations.json", "/worldwide-locations.json"].map((url) =>
+        fetch(url).then((response) => {
+          if (!response.ok) throw new Error("Location library unavailable");
+          return response.json() as Promise<GameLocation[]>;
+        }),
+      ),
+    )
+      .then(([locations, worldwideLocations]) => {
+        const seen = new Set<string>();
+        const playableLocations = [...locations, ...worldwideLocations]
+          .filter(hasPlayableCoordinates)
+          .filter((item) => {
+            if (seen.has(item.id)) return false;
+            seen.add(item.id);
+            return true;
+          });
         if (!active || playableLocations.length === 0) throw new Error("Location library is unavailable");
         setLocationPool([...GAME_LOCATIONS, ...playableLocations]);
         setLibraryState("ready");
@@ -547,7 +595,7 @@ export default function Home() {
 
   function startGame() {
     const health = selectedMode.health;
-    setDeck(shuffle(locationPool));
+    setDeck(balancedShuffle(locationPool));
     setRound(1);
     setPlayerHealth(health);
     setBotHealth(health);
@@ -600,7 +648,7 @@ export default function Home() {
       setPhase("gameover");
       return;
     }
-    if (round % deck.length === 0) setDeck(shuffle(locationPool));
+    if (round % deck.length === 0) setDeck(balancedShuffle(locationPool));
     setRound((value) => value + 1);
     setPlayerPoint(null);
     setBotPoint(null);
