@@ -304,6 +304,8 @@ export default function Home() {
   const [phase, setPhase] = useState<GamePhase>("setup");
   const [modeId, setModeId] = useState<(typeof HEALTH_MODES)[number]["id"]>("classic");
   const [botId, setBotId] = useState<(typeof BOT_LEVELS)[number]["id"]>("rival");
+  const [locationPool, setLocationPool] = useState<GameLocation[]>([...GAME_LOCATIONS]);
+  const [libraryState, setLibraryState] = useState<"loading" | "ready" | "fallback">("loading");
   const [deck, setDeck] = useState<GameLocation[]>(() => shuffle(GAME_LOCATIONS));
   const [round, setRound] = useState(1);
   const [playerHealth, setPlayerHealth] = useState(7000);
@@ -320,6 +322,26 @@ export default function Home() {
   const location = deck[(round - 1) % deck.length];
   const target = useMemo(() => ({ lat: location.lat, lng: location.lng }), [location]);
   const multiplier = 1 + Math.floor((round - 1) / 2) * 0.5;
+
+  useEffect(() => {
+    let active = true;
+    fetch("/commons-locations.json")
+      .then((response) => {
+        if (!response.ok) throw new Error("Location library unavailable");
+        return response.json() as Promise<GameLocation[]>;
+      })
+      .then((locations) => {
+        if (!active || locations.length !== 9988) throw new Error("Location library is incomplete");
+        setLocationPool([...GAME_LOCATIONS, ...locations]);
+        setLibraryState("ready");
+      })
+      .catch(() => {
+        if (active) setLibraryState("fallback");
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (phase !== "guessing" && phase !== "waiting") return;
@@ -361,7 +383,7 @@ export default function Home() {
 
   function startGame() {
     const health = selectedMode.health;
-    setDeck(shuffle(GAME_LOCATIONS));
+    setDeck(shuffle(locationPool));
     setRound(1);
     setPlayerHealth(health);
     setBotHealth(health);
@@ -471,10 +493,16 @@ export default function Home() {
             </div>
           </fieldset>
 
-          <button className="primary-button primary-button--large" type="button" onClick={startGame}>
-            Begin the duel <span>→</span>
+          <button className="primary-button primary-button--large" type="button" onClick={startGame} disabled={libraryState === "loading"}>
+            {libraryState === "loading" ? "Loading world library…" : "Begin the duel"} <span>→</span>
           </button>
-          <p className="start-panel__note">{GAME_LOCATIONS.length} curated photographs · locations are approximate in this alpha</p>
+          <p className="start-panel__note">
+            {libraryState === "ready"
+              ? `${locationPool.length.toLocaleString()} unique geotagged photographs`
+              : libraryState === "fallback"
+                ? `${GAME_LOCATIONS.length} curated photographs · expanded library unavailable`
+                : "Preparing 10,000 unique places…"}
+          </p>
         </section>
       </main>
     );
@@ -536,9 +564,13 @@ export default function Home() {
           <div className="photo-stage__caption">
             <div>
               <span className="caption-label">Clue photograph</span>
-              <a href={location.sourceUrl} target="_blank" rel="noreferrer">
-                {location.credit} ↗
-              </a>
+              {phase === "reveal" ? (
+                <a href={location.sourceUrl} target="_blank" rel="noreferrer">
+                  {location.credit} ↗
+                </a>
+              ) : (
+                <span className="credit-hidden">Photographer revealed after both guesses</span>
+              )}
             </div>
             {phase === "reveal" && (
               <div className="location-reveal">
