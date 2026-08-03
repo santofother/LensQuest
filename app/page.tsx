@@ -303,13 +303,11 @@ function WorldGuessMap({
 function PhotoClue({
   location,
   revealed,
-  photoNumber,
-  photoTotal,
+  round,
 }: {
   location: GameLocation;
   revealed: boolean;
-  photoNumber: number;
-  photoTotal: number;
+  round: number;
 }) {
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
@@ -326,11 +324,6 @@ function PhotoClue({
       y: Math.max(-maxY, Math.min(maxY, next.y)),
     };
   }
-
-  useEffect(() => {
-    setZoom(1);
-    setPan({ x: 0, y: 0 });
-  }, [location.id]);
 
   useEffect(() => {
     const viewer = viewerRef.current;
@@ -425,7 +418,7 @@ function PhotoClue({
       </div>
       <div className="photo-stage__topline">
         <span>{revealed ? location.region : "Somewhere on Earth"}</span>
-        <span>Photo {photoNumber}/{photoTotal}</span>
+        <span>Round {round}</span>
       </div>
       <div className="photo-zoom-controls" aria-label="Photo zoom controls">
         <button type="button" onClick={() => changeZoom(-0.5)} disabled={zoom <= 1} aria-label="Zoom photo out">−</button>
@@ -487,9 +480,8 @@ export default function Home() {
         return response.json() as Promise<GameLocation[]>;
       })
       .then((locations) => {
-        const outsidePhotoCount = 10000 - GAME_LOCATIONS.length;
-        if (!active || locations.length < outsidePhotoCount) throw new Error("Location library is incomplete");
-        setLocationPool([...GAME_LOCATIONS, ...locations.slice(0, outsidePhotoCount)]);
+        if (!active || locations.length === 0) throw new Error("Location library is unavailable");
+        setLocationPool([...GAME_LOCATIONS, ...locations]);
         setLibraryState("ready");
       })
       .catch(() => {
@@ -558,9 +550,12 @@ export default function Home() {
     resolvingRef.current = true;
     const playerDistance = distanceKm(finalPlayerPoint, target);
     const botDistance = distanceKm(finalBotPoint, target);
-    const damage = Math.max(1, Math.round(Math.abs(playerDistance - botDistance) * multiplier));
+    const distanceGap = Math.abs(playerDistance - botDistance);
+    const damageCap = Math.round(selectedMode.health * 0.3);
+    const scaledDamage = Math.round(Math.pow(distanceGap, 0.9) * 0.55 * multiplier);
+    const damage = distanceGap < 1 ? 0 : Math.max(1, Math.min(damageCap, scaledDamage));
     const damaged =
-      Math.abs(playerDistance - botDistance) < 1
+      distanceGap < 1
         ? "none"
         : playerDistance > botDistance
           ? "player"
@@ -655,10 +650,10 @@ export default function Home() {
           </button>
           <p className="start-panel__note">
             {libraryState === "ready"
-              ? `${locationPool.length.toLocaleString()} unique geotagged photographs`
+              ? "Curated photographs with visible geographic clues"
               : libraryState === "fallback"
-                ? `${GAME_LOCATIONS.length} curated photographs · expanded library unavailable`
-                : "Preparing 10,000 unique places…"}
+                ? "Curated collection · expanded library unavailable"
+                : "Curating the photo library…"}
           </p>
         </section>
       </main>
@@ -713,10 +708,10 @@ export default function Home() {
 
       <section className="game-grid">
         <PhotoClue
+          key={location.id}
           location={location}
           revealed={phase === "reveal"}
-          photoNumber={((round - 1) % deck.length) + 1}
-          photoTotal={deck.length}
+          round={round}
         />
 
         <aside className="guess-panel">

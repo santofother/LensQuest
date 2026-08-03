@@ -124,6 +124,32 @@ const SANTO_GALLERY: GalleryPhoto[] = [
   ["IMG_3186.JPG", "Sky Window", "Aerial sunset view of a coastal city through clouds from an airplane"],
 ];
 
+// These are strong photographs, but they do not provide enough geographic
+// evidence for a fair location round. Keep them in the source list so this
+// curation can be revisited without losing the portfolio inventory.
+const SANTO_NON_GEOGRAPHIC = new Set([
+  "Greenhouse Dreams",
+  "Storm Brewing",
+  "Starry Night Trail",
+  "Bicycle Under the Oaks",
+  "Torino Friend",
+  "Fire Spinner",
+  "Night Streak",
+  "Window Light",
+  "Reclaimed",
+  "Street Celebration",
+  "Phone Glow",
+  "Team Huddle",
+  "Goal Celebration",
+  "Team Spirit",
+  "Desert Oasis",
+  "Desert Arch",
+  "Ocean Sprint",
+  "Trail Friends",
+  "Starry Silhouette",
+  "Snowy Path",
+]);
+
 function approximatePlace(title: string, description: string, index: number): ApproximatePlace {
   const clue = `${title} ${description}`.toLowerCase();
   const spread = (index % 9 - 4) * 0.004;
@@ -161,15 +187,17 @@ function approximatePlace(title: string, description: string, index: number): Ap
   return at("Colorado Front Range", "Colorado, United States", 39.5501, -105.7821);
 }
 
-const SANTO_GALLERY_LOCATIONS: GameLocation[] = SANTO_GALLERY.map(([file, title, description], index) => ({
-  id: `santo-explore-${String(index + 1).padStart(3, "0")}`,
-  ...approximatePlace(title, description, index),
-  imageUrl: `${SANTO_PRINTS}/${encodeURIComponent(file)}`,
-  alt: description,
-  credit: "Santo Fothergill",
-  sourceUrl: SANTO_SOURCE,
-  confidence: "estimated",
-}));
+const SANTO_GALLERY_LOCATIONS: GameLocation[] = SANTO_GALLERY
+  .filter(([, title]) => !SANTO_NON_GEOGRAPHIC.has(title))
+  .map(([file, title, description], index) => ({
+    id: `santo-explore-${String(index + 1).padStart(3, "0")}`,
+    ...approximatePlace(title, description, index),
+    imageUrl: `${SANTO_PRINTS}/${encodeURIComponent(file)}`,
+    alt: description,
+    credit: "Santo Fothergill",
+    sourceUrl: SANTO_SOURCE,
+    confidence: "estimated",
+  }));
 
 // The gallery is first in the deck source so Santo's work is strongly represented.
 // The summit portrait is a separate Santo photograph that is not duplicated in Explore.
