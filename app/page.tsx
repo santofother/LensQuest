@@ -1,10 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { GAME_LOCATIONS, type GameLocation } from "./gameData";
 
 type Coordinates = { lat: number; lng: number };
-type GamePhase = "setup" | "guessing" | "reveal" | "gameover";
+type GamePhase = "setup" | "guessing" | "waiting" | "reveal" | "gameover";
 type RoundResult = {
   playerDistance: number;
   botDistance: number;
@@ -129,37 +129,129 @@ function WorldGuessMap({
   botPoint,
   target,
   revealed,
+  locked,
   onPick,
 }: {
   playerGuess: Coordinates | null;
   botPoint: Coordinates | null;
   target: Coordinates;
   revealed: boolean;
+  locked: boolean;
   onPick: (point: Coordinates) => void;
 }) {
-  function handlePick(event: React.MouseEvent<HTMLButtonElement>) {
-    if (revealed) return;
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [expanded, setExpanded] = useState(false);
+  const mapRef = useRef<HTMLDivElement>(null);
+  const dragRef = useRef({ active: false, startX: 0, startY: 0, panX: 0, panY: 0, moved: false });
+  const ignoreClickRef = useRef(false);
+
+  useEffect(() => {
+    setZoom(1);
+    setPan({ x: 0, y: 0 });
+  }, [target.lat, target.lng]);
+
+  function constrainedPan(next: { x: number; y: number }, atZoom = zoom) {
+    const bounds = mapRef.current?.getBoundingClientRect();
+    if (!bounds || atZoom <= 1) return { x: 0, y: 0 };
+    const maxX = (bounds.width * (atZoom - 1)) / 2;
+    const maxY = (bounds.height * (atZoom - 1)) / 2;
+    return {
+      x: Math.max(-maxX, Math.min(maxX, next.x)),
+      y: Math.max(-maxY, Math.min(maxY, next.y)),
+    };
+  }
+
+  function changeZoom(change: number) {
+    const nextZoom = Math.max(1, Math.min(5, Number((zoom + change).toFixed(1))));
+    setZoom(nextZoom);
+    setPan((current) => constrainedPan(current, nextZoom));
+  }
+
+  function resetView() {
+    setZoom(1);
+    setPan({ x: 0, y: 0 });
+  }
+
+  function handlePointerDown(event: React.PointerEvent<HTMLDivElement>) {
+    if (zoom <= 1) return;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    dragRef.current = {
+      active: true,
+      startX: event.clientX,
+      startY: event.clientY,
+      panX: pan.x,
+      panY: pan.y,
+      moved: false,
+    };
+  }
+
+  function handlePointerMove(event: React.PointerEvent<HTMLDivElement>) {
+    const drag = dragRef.current;
+    if (!drag.active) return;
+    const deltaX = event.clientX - drag.startX;
+    const deltaY = event.clientY - drag.startY;
+    if (Math.abs(deltaX) + Math.abs(deltaY) > 5) drag.moved = true;
+    setPan(constrainedPan({ x: drag.panX + deltaX, y: drag.panY + deltaY }));
+  }
+
+  function handlePointerUp(event: React.PointerEvent<HTMLDivElement>) {
+    if (!dragRef.current.active) return;
+    ignoreClickRef.current = dragRef.current.moved;
+    dragRef.current.active = false;
+    event.currentTarget.releasePointerCapture(event.pointerId);
+  }
+
+  function handlePick(event: React.MouseEvent<HTMLDivElement>) {
+    if (revealed || locked) return;
+    if (ignoreClickRef.current) {
+      ignoreClickRef.current = false;
+      return;
+    }
     const bounds = event.currentTarget.getBoundingClientRect();
-    const x = Math.max(0, Math.min(bounds.width, event.clientX - bounds.left));
-    const y = Math.max(0, Math.min(bounds.height, event.clientY - bounds.top));
+    const transformedX = (event.clientX - bounds.left - bounds.width / 2 - pan.x) / zoom + bounds.width / 2;
+    const transformedY = (event.clientY - bounds.top - bounds.height / 2 - pan.y) / zoom + bounds.height / 2;
+    const x = Math.max(0, Math.min(bounds.width, transformedX));
+    const y = Math.max(0, Math.min(bounds.height, transformedY));
     onPick({ lng: (x / bounds.width) * 360 - 180, lat: 90 - (y / bounds.height) * 180 });
   }
 
   return (
-    <div className="map-shell">
-      <button
-        className={`world-map ${revealed ? "world-map--locked" : ""}`}
-        type="button"
+    <div className={`map-shell ${expanded ? "map-shell--expanded" : ""}`}>
+      <div className="map-toolbar">
+        <span>Satellite guess map</span>
+        <div className="map-toolbar__controls">
+          <button type="button" onClick={() => changeZoom(-0.5)} disabled={zoom <= 1} aria-label="Zoom out">−</button>
+          <span>{zoom.toFixed(1)}×</span>
+          <button type="button" onClick={() => changeZoom(0.5)} disabled={zoom >= 5} aria-label="Zoom in">+</button>
+          <button type="button" onClick={resetView} disabled={zoom === 1 && pan.x === 0 && pan.y === 0}>Reset</button>
+          <button type="button" onClick={() => setExpanded((value) => !value)}>{expanded ? "Close" : "Expand"}</button>
+        </div>
+      </div>
+      <div
+        ref={mapRef}
+        className={`world-map ${revealed || locked ? "world-map--locked" : ""}`}
         onClick={handlePick}
-        aria-label={revealed ? "Round result map" : "Select your guess on the satellite map"}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerUp}
+        role="button"
+        tabIndex={0}
+        aria-label={revealed ? "Round result map" : locked ? "Your guess is locked" : "Select your guess on the satellite map"}
       >
-        {/* NASA Blue Marble satellite mosaic, public domain. */}
-        <img src={EARTH_IMAGE} alt="Satellite photograph of Earth used as the guessing map" />
-        <span className="world-map__shade" />
-        {playerGuess && <Marker point={playerGuess} kind="player" label="You" />}
-        {revealed && botPoint && <Marker point={botPoint} kind="bot" label="Bot" />}
-        {revealed && <Marker point={target} kind="target" label="Location" />}
-      </button>
+        <div
+          className="world-map__canvas"
+          style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` }}
+        >
+          {/* NASA Blue Marble satellite mosaic, public domain. */}
+          <img src={EARTH_IMAGE} alt="Satellite photograph of Earth used as the guessing map" draggable={false} />
+          <span className="world-map__shade" />
+          {playerGuess && <Marker point={playerGuess} kind="player" label="You" />}
+          {revealed && botPoint && <Marker point={botPoint} kind="bot" label="Bot" />}
+          {revealed && <Marker point={target} kind="target" label="Location" />}
+        </div>
+      </div>
       <div className="map-key">
         <span><i className="key-dot key-dot--player" />You</span>
         {revealed && <span><i className="key-dot key-dot--bot" />Bot</span>}
@@ -181,12 +273,53 @@ export default function Home() {
   const [playerPoint, setPlayerPoint] = useState<Coordinates | null>(null);
   const [botPoint, setBotPoint] = useState<Coordinates | null>(null);
   const [result, setResult] = useState<RoundResult | null>(null);
+  const [timeLeft, setTimeLeft] = useState(60);
+  const [firstLocker, setFirstLocker] = useState<"player" | "bot" | null>(null);
+  const resolvingRef = useRef(false);
 
   const selectedMode = HEALTH_MODES.find((mode) => mode.id === modeId) ?? HEALTH_MODES[1];
   const selectedBot = BOT_LEVELS.find((bot) => bot.id === botId) ?? BOT_LEVELS[1];
   const location = deck[(round - 1) % deck.length];
   const target = useMemo(() => ({ lat: location.lat, lng: location.lng }), [location]);
   const multiplier = 1 + Math.floor((round - 1) / 2) * 0.5;
+
+  useEffect(() => {
+    if (phase !== "guessing" && phase !== "waiting") return;
+    const countdown = window.setInterval(() => {
+      setTimeLeft((seconds) => Math.max(0, seconds - 1));
+    }, 1000);
+    return () => window.clearInterval(countdown);
+  }, [phase, round]);
+
+  useEffect(() => {
+    if (phase !== "guessing" || botPoint) return;
+    const thinkTime = 10000 + Math.random() * 18000;
+    const botLockTimer = window.setTimeout(() => {
+      setBotPoint(botGuess(target, selectedBot.error));
+      setFirstLocker("bot");
+      setTimeLeft((seconds) => Math.min(seconds, 12));
+    }, thinkTime);
+    return () => window.clearTimeout(botLockTimer);
+  }, [phase, round, botPoint, selectedBot.error, target]);
+
+  useEffect(() => {
+    if (phase !== "waiting" || !playerPoint) return;
+    const responseDelay = 2500 + Math.random() * 2500;
+    const responseTimer = window.setTimeout(() => {
+      const generatedBotPoint = botGuess(target, selectedBot.error);
+      setBotPoint(generatedBotPoint);
+      resolveRound(playerPoint, generatedBotPoint);
+    }, responseDelay);
+    return () => window.clearTimeout(responseTimer);
+  }, [phase, round]);
+
+  useEffect(() => {
+    if (timeLeft > 0 || (phase !== "guessing" && phase !== "waiting")) return;
+    const finalPlayerPoint = playerPoint ?? { lat: 0, lng: 0 };
+    const finalBotPoint = botPoint ?? botGuess(target, selectedBot.error);
+    setBotPoint(finalBotPoint);
+    resolveRound(finalPlayerPoint, finalBotPoint);
+  }, [timeLeft, phase]);
 
   function startGame() {
     const health = selectedMode.health;
@@ -197,14 +330,17 @@ export default function Home() {
     setPlayerPoint(null);
     setBotPoint(null);
     setResult(null);
+    setTimeLeft(60);
+    setFirstLocker(null);
+    resolvingRef.current = false;
     setPhase("guessing");
   }
 
-  function lockGuess() {
-    if (!playerPoint) return;
-    const generatedBotPoint = botGuess(target, selectedBot.error);
-    const playerDistance = distanceKm(playerPoint, target);
-    const botDistance = distanceKm(generatedBotPoint, target);
+  function resolveRound(finalPlayerPoint: Coordinates, finalBotPoint: Coordinates) {
+    if (resolvingRef.current) return;
+    resolvingRef.current = true;
+    const playerDistance = distanceKm(finalPlayerPoint, target);
+    const botDistance = distanceKm(finalBotPoint, target);
     const damage = Math.max(1, Math.round(Math.abs(playerDistance - botDistance) * multiplier));
     const damaged =
       Math.abs(playerDistance - botDistance) < 1
@@ -215,9 +351,21 @@ export default function Home() {
 
     if (damaged === "player") setPlayerHealth((health) => Math.max(0, health - damage));
     if (damaged === "bot") setBotHealth((health) => Math.max(0, health - damage));
-    setBotPoint(generatedBotPoint);
+    setPlayerPoint(finalPlayerPoint);
+    setBotPoint(finalBotPoint);
     setResult({ playerDistance, botDistance, damage, damaged });
     setPhase("reveal");
+  }
+
+  function lockGuess() {
+    if (!playerPoint || phase !== "guessing") return;
+    if (botPoint) {
+      resolveRound(playerPoint, botPoint);
+      return;
+    }
+    setFirstLocker("player");
+    setTimeLeft(8);
+    setPhase("waiting");
   }
 
   function continueGame() {
@@ -230,6 +378,9 @@ export default function Home() {
     setPlayerPoint(null);
     setBotPoint(null);
     setResult(null);
+    setTimeLeft(60);
+    setFirstLocker(null);
+    resolvingRef.current = false;
     setPhase("guessing");
   }
 
@@ -244,6 +395,7 @@ export default function Home() {
           <p className="start-panel__intro">
             Read the light, landscape, weather, and architecture. Place your guess,
             outsmart the bot, and protect your health as every round grows deadlier.
+            You have 60 seconds—once someone locks, their rival gets only seconds to answer.
           </p>
 
           <fieldset className="choice-group">
@@ -320,7 +472,13 @@ export default function Home() {
     <main className="game-screen">
       <header className="game-header">
         <div className="brand"><span className="brand__mark" />LensQuest</div>
-        <div className="round-chip">Round {round} <strong>×{multiplier.toFixed(1)}</strong></div>
+        <div className="round-status">
+          <div className="round-chip">Round {round} <strong>×{multiplier.toFixed(1)}</strong></div>
+          <div className={`timer-chip ${timeLeft <= 10 ? "timer-chip--urgent" : ""}`}>
+            <span>{phase === "waiting" ? "Bot reply" : firstLocker === "bot" ? "Your reply" : "Time"}</span>
+            <strong>0:{String(timeLeft).padStart(2, "0")}</strong>
+          </div>
+        </div>
         <button className="quit-button" type="button" onClick={() => setPhase("setup")}>End duel</button>
       </header>
 
@@ -356,8 +514,8 @@ export default function Home() {
         <aside className="guess-panel">
           <div className="guess-panel__heading">
             <div>
-              <span className="caption-label">{phase === "reveal" ? "Round result" : "Your move"}</span>
-              <h2>{phase === "reveal" ? location.name : "Where was this taken?"}</h2>
+              <span className="caption-label">{phase === "reveal" ? "Round result" : phase === "waiting" ? "Guess locked" : "Your move"}</span>
+              <h2>{phase === "reveal" ? location.name : phase === "waiting" ? "Opponent is choosing…" : "Where was this taken?"}</h2>
             </div>
             <div className="multiplier-badge">×{multiplier.toFixed(1)} damage</div>
           </div>
@@ -367,18 +525,35 @@ export default function Home() {
             botPoint={botPoint}
             target={target}
             revealed={phase === "reveal"}
+            locked={phase === "waiting"}
             onPick={setPlayerPoint}
           />
 
           {phase === "guessing" ? (
             <div className="guess-actions">
-              <p>{playerPoint ? "Pin placed. Move it or lock in your guess." : "Tap the satellite photograph to place your pin."}</p>
+              <p>
+                {firstLocker === "bot"
+                  ? `The bot locked first. You have ${timeLeft} seconds to answer.`
+                  : playerPoint
+                    ? "Pin placed. Zoom, pan, refine it, or lock in your guess."
+                    : "Tap the satellite photograph to place your pin."}
+              </p>
               <button className="primary-button" type="button" disabled={!playerPoint} onClick={lockGuess}>
-                Lock guess
+                {firstLocker === "bot" ? "Answer now" : "Lock guess"}
               </button>
+            </div>
+          ) : phase === "waiting" ? (
+            <div className="waiting-panel">
+              <div className="waiting-panel__pulse" />
+              <span>You locked first</span>
+              <strong>{selectedBot.label} has {timeLeft} seconds</strong>
+              <p>The round reveals as soon as the bot commits.</p>
             </div>
           ) : (
             <div className="result-panel">
+              <div className="lock-summary">
+                {firstLocker === "player" ? "You locked first" : firstLocker === "bot" ? `${selectedBot.label} locked first` : "Time expired"}
+              </div>
               <div className="distance-grid">
                 <div><span>Your distance</span><strong>{formatDistance(result?.playerDistance ?? 0)}</strong></div>
                 <div><span>Bot distance</span><strong>{formatDistance(result?.botDistance ?? 0)}</strong></div>

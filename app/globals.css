@@ -192,6 +192,22 @@ a { color: inherit; }
   padding: 8px 13px;
 }
 .round-chip strong { color: var(--yellow); margin-left: 8px; }
+.round-status { align-items: center; display: flex; gap: 8px; }
+.timer-chip {
+  align-items: center;
+  background: rgba(101,214,195,.08);
+  border: 1px solid rgba(101,214,195,.2);
+  border-radius: 999px;
+  display: flex;
+  gap: 7px;
+  min-width: 93px;
+  padding: 7px 11px;
+}
+.timer-chip span { color: #8ebfb7; font-size: 8px; letter-spacing: .09em; text-transform: uppercase; }
+.timer-chip strong { color: var(--aqua); font-family: var(--font-display); font-size: 13px; }
+.timer-chip--urgent { animation: timer-pulse 1s ease-in-out infinite; background: rgba(255,118,87,.12); border-color: rgba(255,118,87,.36); }
+.timer-chip--urgent span, .timer-chip--urgent strong { color: var(--orange-soft); }
+@keyframes timer-pulse { 50% { transform: scale(1.035); } }
 .quit-button, .text-button {
   background: none;
   border: 0;
@@ -223,9 +239,9 @@ a { color: inherit; }
 .game-grid {
   display: grid;
   gap: 14px;
-  grid-template-columns: minmax(0, 1.7fr) minmax(370px, .8fr);
+  grid-template-columns: minmax(0, 1.35fr) minmax(500px, 1fr);
   margin: 0 auto;
-  max-width: 1560px;
+  max-width: 1660px;
 }
 
 .photo-stage {
@@ -286,9 +302,40 @@ a { color: inherit; }
 .multiplier-badge { background: rgba(245,200,91,.1); border: 1px solid rgba(245,200,91,.24); border-radius: 99px; color: var(--yellow); font-size: 10px; padding: 7px 9px; }
 
 .map-shell { width: 100%; }
+.map-toolbar { align-items: center; display: flex; justify-content: space-between; margin-bottom: 8px; }
+.map-toolbar > span { color: #858782; font-size: 9px; letter-spacing: .09em; text-transform: uppercase; }
+.map-toolbar__controls { align-items: center; display: flex; gap: 5px; }
+.map-toolbar__controls button {
+  background: #252724;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: #e1e1dc;
+  cursor: pointer;
+  font-size: 10px;
+  height: 28px;
+  min-width: 28px;
+  padding: 0 8px;
+}
+.map-toolbar__controls button:hover:not(:disabled) { border-color: rgba(255,118,87,.5); }
+.map-toolbar__controls button:disabled { cursor: default; opacity: .3; }
+.map-toolbar__controls > span { color: var(--muted); font-family: var(--font-display); font-size: 9px; min-width: 27px; text-align: center; }
+.map-shell--expanded {
+  background: #111210;
+  border: 1px solid rgba(255,255,255,.16);
+  border-radius: 18px;
+  box-shadow: 0 24px 100px rgba(0,0,0,.72);
+  display: flex;
+  flex-direction: column;
+  inset: 18px;
+  padding: 18px;
+  position: fixed;
+  width: auto;
+  z-index: 50;
+}
+.map-shell--expanded .world-map { aspect-ratio: auto; flex: 1; min-height: 0; }
 .world-map {
   appearance: none;
-  aspect-ratio: 2 / 1;
+  aspect-ratio: 16 / 10;
   background: #091314;
   border: 1px solid rgba(255,255,255,.14);
   border-radius: 10px;
@@ -297,10 +344,13 @@ a { color: inherit; }
   overflow: hidden;
   padding: 0;
   position: relative;
+  touch-action: none;
+  user-select: none;
   width: 100%;
 }
 .world-map--locked { cursor: default; }
-.world-map > img { display: block; height: 100%; object-fit: fill; width: 100%; }
+.world-map__canvas { height: 100%; inset: 0; position: absolute; transform-origin: center; width: 100%; will-change: transform; }
+.world-map__canvas > img { display: block; height: 100%; object-fit: fill; pointer-events: none; width: 100%; }
 .world-map__shade { background: linear-gradient(180deg, rgba(6,13,15,.02), rgba(6,13,15,.22)); inset: 0; pointer-events: none; position: absolute; }
 .map-marker { position: absolute; transform: translate(-50%, -50%); z-index: 2; }
 .map-marker__dot { border: 2px solid white; border-radius: 50%; box-shadow: 0 2px 8px rgba(0,0,0,.8); display: block; height: 13px; width: 13px; }
@@ -318,7 +368,14 @@ a { color: inherit; }
 
 .guess-actions { display: flex; flex-direction: column; flex: 1; justify-content: end; padding-top: 20px; }
 .guess-actions p { color: var(--muted); font-size: 12px; line-height: 1.5; margin: 0 0 13px; }
+.waiting-panel { align-items: center; display: flex; flex: 1; flex-direction: column; justify-content: center; min-height: 150px; text-align: center; }
+.waiting-panel__pulse { animation: waiting-pulse 1.2s ease-out infinite; background: var(--orange); border-radius: 50%; height: 11px; margin-bottom: 15px; width: 11px; }
+.waiting-panel > span { color: var(--orange-soft); font-size: 9px; letter-spacing: .11em; margin-bottom: 5px; text-transform: uppercase; }
+.waiting-panel strong { font-family: var(--font-display); font-size: 17px; }
+.waiting-panel p { color: var(--muted); font-size: 11px; margin: 7px 0 0; }
+@keyframes waiting-pulse { 0% { box-shadow: 0 0 0 0 rgba(255,118,87,.55); } 100% { box-shadow: 0 0 0 14px rgba(255,118,87,0); } }
 .result-panel { display: flex; flex-direction: column; flex: 1; justify-content: end; padding-top: 18px; }
+.lock-summary { color: #8d8f89; font-size: 9px; letter-spacing: .08em; margin-bottom: 8px; text-transform: uppercase; }
 .distance-grid { display: grid; gap: 8px; grid-template-columns: 1fr 1fr; margin-bottom: 8px; }
 .distance-grid > div { background: var(--panel-2); border: 1px solid var(--line); border-radius: 9px; padding: 12px; }
 .distance-grid span, .damage-callout span { color: var(--muted); display: block; font-size: 9px; margin-bottom: 4px; text-transform: uppercase; }
@@ -359,6 +416,11 @@ a { color: inherit; }
   .game-screen { padding: 0 12px 14px; }
   .game-header { height: 58px; }
   .game-header .brand { font-size: 14px; }
+  .round-status { gap: 4px; }
+  .round-chip { font-size: 9px; padding: 7px 9px; }
+  .timer-chip { min-width: 66px; padding: 6px 8px; }
+  .timer-chip span { display: none; }
+  .timer-chip strong { font-size: 11px; }
   .brand__mark { border-width: 6px; width: 22px; }
   .battle-strip { gap: 10px; }
   .health__label strong { font-size: 9px; }
@@ -366,6 +428,10 @@ a { color: inherit; }
   .photo-stage__caption { padding: 16px; }
   .location-reveal strong { font-size: 14px; }
   .guess-panel { padding: 14px; }
+  .world-map { aspect-ratio: 1.45 / 1; }
+  .map-toolbar > span { display: none; }
+  .map-toolbar { justify-content: flex-end; }
+  .map-shell--expanded { border-radius: 10px; inset: 6px; padding: 10px; }
   .guess-panel__heading h2 { font-size: 18px; }
   .multiplier-badge { font-size: 8px; }
   .map-marker__label { display: none; }
