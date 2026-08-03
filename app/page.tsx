@@ -25,6 +25,20 @@ const BOT_LEVELS = [
 ] as const;
 
 const EARTH_IMAGE = "/world-map.webp";
+const BLOCKED_PHOTO_IDS = new Set([
+  "unsplash-PGeslSkvPQg", // Flower close-up incorrectly tagged as 0,0 instead of Seoul.
+]);
+
+function hasPlayableCoordinates(location: GameLocation) {
+  return (
+    Number.isFinite(location.lat) &&
+    Number.isFinite(location.lng) &&
+    Math.abs(location.lat) <= 85 &&
+    Math.abs(location.lng) <= 180 &&
+    !(Math.abs(location.lat) < 0.01 && Math.abs(location.lng) < 0.01) &&
+    !BLOCKED_PHOTO_IDS.has(location.id)
+  );
+}
 
 function shuffle<T>(items: readonly T[]) {
   return [...items].sort(() => Math.random() - 0.5);
@@ -480,8 +494,9 @@ export default function Home() {
         return response.json() as Promise<GameLocation[]>;
       })
       .then((locations) => {
-        if (!active || locations.length === 0) throw new Error("Location library is unavailable");
-        setLocationPool([...GAME_LOCATIONS, ...locations]);
+        const playableLocations = locations.filter(hasPlayableCoordinates);
+        if (!active || playableLocations.length === 0) throw new Error("Location library is unavailable");
+        setLocationPool([...GAME_LOCATIONS, ...playableLocations]);
         setLibraryState("ready");
       })
       .catch(() => {
