@@ -151,6 +151,42 @@ function WorldGuessMap({
     setPan({ x: 0, y: 0 });
   }, [target.lat, target.lng]);
 
+  useEffect(() => {
+    const mapElement = mapRef.current;
+    if (!mapElement) return;
+
+    function handleWheel(event: WheelEvent) {
+      event.preventDefault();
+
+      if (!event.ctrlKey && Math.abs(event.deltaX) > Math.abs(event.deltaY) * 1.15 && zoom > 1) {
+        setPan(constrainedPan({ x: pan.x - event.deltaX, y: pan.y }));
+        return;
+      }
+
+      if (event.deltaY === 0) return;
+      const direction = event.deltaY < 0 ? 1 : -1;
+      const step = Math.max(0.15, Math.min(0.65, Math.abs(event.deltaY) / 220));
+      const nextZoom = Math.max(1, Math.min(5, Number((zoom + direction * step).toFixed(2))));
+      if (nextZoom === zoom) return;
+
+      const bounds = mapElement.getBoundingClientRect();
+      const pointerX = event.clientX - bounds.left;
+      const pointerY = event.clientY - bounds.top;
+      const worldOffsetX = (pointerX - bounds.width / 2 - pan.x) / zoom;
+      const worldOffsetY = (pointerY - bounds.height / 2 - pan.y) / zoom;
+      const nextPan = {
+        x: pointerX - bounds.width / 2 - worldOffsetX * nextZoom,
+        y: pointerY - bounds.height / 2 - worldOffsetY * nextZoom,
+      };
+
+      setZoom(nextZoom);
+      setPan(constrainedPan(nextPan, nextZoom));
+    }
+
+    mapElement.addEventListener("wheel", handleWheel, { passive: false });
+    return () => mapElement.removeEventListener("wheel", handleWheel);
+  }, [zoom, pan.x, pan.y]);
+
   function constrainedPan(next: { x: number; y: number }, atZoom = zoom) {
     const bounds = mapRef.current?.getBoundingClientRect();
     if (!bounds || atZoom <= 1) return { x: 0, y: 0 };
@@ -219,7 +255,7 @@ function WorldGuessMap({
   return (
     <div className={`map-shell ${expanded ? "map-shell--expanded" : ""}`}>
       <div className="map-toolbar">
-        <span>Satellite guess map</span>
+        <span>Scroll to zoom · drag to pan</span>
         <div className="map-toolbar__controls">
           <button type="button" onClick={() => changeZoom(-0.5)} disabled={zoom <= 1} aria-label="Zoom out">−</button>
           <span>{zoom.toFixed(1)}×</span>
