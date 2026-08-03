@@ -24,8 +24,7 @@ const BOT_LEVELS = [
   { id: "oracle", label: "Oracle", error: 620, detail: "Knows the world frighteningly well" },
 ] as const;
 
-const EARTH_IMAGE =
-  "https://eoimages.gsfc.nasa.gov/images/imagerecords/57000/57730/land_ocean_ice_2048.png";
+const EARTH_IMAGE = "/world-map.webp";
 
 function shuffle<T>(items: readonly T[]) {
   return [...items].sort(() => Math.random() - 0.5);
@@ -278,7 +277,10 @@ function WorldGuessMap({
       >
         <div
           className="world-map__canvas"
-          style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` }}
+          style={{
+            transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+            "--map-zoom": zoom,
+          } as React.CSSProperties}
         >
           {/* NASA Blue Marble satellite mosaic, public domain. */}
           <img src={EARTH_IMAGE} alt="Satellite photograph of Earth used as the guessing map" draggable={false} />
