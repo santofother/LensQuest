@@ -824,6 +824,10 @@ a { color: inherit; }
 .private-map-pin--target b { background: var(--yellow); }
 .private-lock-area { display: flex; flex: 1; flex-direction: column; justify-content: end; padding-top: 14px; }
 .private-lock-area p { color: var(--muted); font-size: 10px; }
+.private-round-actions { display: grid; gap: 8px; grid-template-columns: auto 1fr; }
+.private-skip-button { background: transparent; border: 1px solid rgba(255,255,255,.15); border-radius: 9px; color: #aaa9a3; cursor: pointer; font-size: 9px; padding: 0 13px; }
+.private-skip-button:hover:not(:disabled) { border-color: rgba(245,200,91,.4); color: var(--yellow); }
+.private-skip-button:disabled { cursor: default; opacity: .5; }
 .private-result { display: grid; gap: 8px; grid-template-columns: 1fr 1fr; padding-top: 12px; }
 .private-result > div, .private-result > p { background: #20221f; border: 1px solid var(--line); border-radius: 9px; display: flex; flex-direction: column; gap: 5px; margin: 0; padding: 10px; }
 .private-result span { color: var(--muted); font-size: 8px; text-transform: uppercase; }

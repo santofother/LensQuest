@@ -49,7 +49,7 @@ function makeRoomId() {
 }
 
 function findRoom(pathname) {
-  const match = pathname.match(/^\/rooms\/([A-F0-9]{6})(?:\/(join|leave|start|game|guess|next))?$/);
+  const match = pathname.match(/^\/rooms\/([A-F0-9]{6})(?:\/(join|leave|start|game|guess|skip|next))?$/);
   if (!match) return null;
   return { room: rooms.get(match[1]), id: match[1], action: match[2] };
 }
@@ -69,6 +69,25 @@ function currentLocation(game) {
   return game.deck[(game.round - 1) % game.deck.length];
 }
 
+function advanceRound(room) {
+  const game = room.game;
+  if (!game) return;
+  if (room.players.some((player) => game.health[player.id] <= 0)) {
+    game.status = "finished";
+    game.revealDeadline = null;
+  } else {
+    game.round += 1;
+    game.status = "playing";
+    game.guesses = {};
+    game.ready = {};
+    game.skipVotes = {};
+    game.result = null;
+    game.revealDeadline = null;
+    game.deadline = Date.now() + 60_000;
+  }
+  room.updatedAt = Date.now();
+}
+
 function resolveRound(room) {
   const game = room.game;
   if (!game || game.status !== "playing") return;
@@ -86,12 +105,14 @@ function resolveRound(room) {
   game.result = { distances, damage, damagedPlayerId, target: location };
   game.status = "reveal";
   game.ready = {};
+  game.revealDeadline = Date.now() + 15_000;
   room.updatedAt = Date.now();
 }
 
 function updateTimedRound(room) {
   const game = room.game;
   if (game?.status === "playing" && Date.now() >= game.deadline) resolveRound(room);
+  if (game?.status === "reveal" && Date.now() >= game.revealDeadline) advanceRound(room);
 }
 
 function gameView(room, playerId) {
@@ -106,12 +127,14 @@ function gameView(room, playerId) {
     round: game.round,
     locationId: currentLocation(game).id,
     deadline: game.deadline,
+    revealDeadline: game.revealDeadline,
     players: room.players.map((player) => ({
       id: player.id,
       name: player.name,
       health: game.health[player.id],
       locked: Boolean(game.guesses[player.id]),
       ready: Boolean(game.ready[player.id]),
+      skipped: Boolean(game.skipVotes[player.id]),
     })),
     playerId,
     guesses: reveal ? game.guesses : undefined,
@@ -175,7 +198,9 @@ const server = createServer(async (request, response) => {
         health: Object.fromEntries(route.room.players.map((player) => [player.id, health])),
         guesses: {},
         ready: {},
+        skipVotes: {},
         result: null,
+        revealDeadline: null,
         deadline: now + 60_000,
       };
       route.room.updatedAt = now;
@@ -205,6 +230,18 @@ const server = createServer(async (request, response) => {
       return send(response, 200, { game: gameView(route.room, body.playerId) });
     }
 
+    if (route && request.method === "POST" && route.action === "skip") {
+      if (!route.room?.game) return send(response, 404, { error: "Game not started" });
+      const body = await readJson(request);
+      const game = route.room.game;
+      if (game.status !== "playing") return send(response, 409, { error: "Round cannot be skipped now" });
+      if (!route.room.players.some((player) => player.id === body.playerId)) return send(response, 403, { error: "Player is not in this room" });
+      game.skipVotes[body.playerId] = true;
+      if (route.room.players.every((player) => game.skipVotes[player.id])) advanceRound(route.room);
+      route.room.updatedAt = Date.now();
+      return send(response, 200, { game: gameView(route.room, body.playerId) });
+    }
+
     if (route && request.method === "POST" && route.action === "next") {
       if (!route.room?.game) return send(response, 404, { error: "Game not started" });
       const body = await readJson(request);
@@ -212,18 +249,7 @@ const server = createServer(async (request, response) => {
       if (game.status !== "reveal") return send(response, 409, { error: "Round is not ready to advance" });
       if (!route.room.players.some((player) => player.id === body.playerId)) return send(response, 403, { error: "Player is not in this room" });
       game.ready[body.playerId] = true;
-      if (route.room.players.every((player) => game.ready[player.id])) {
-        if (route.room.players.some((player) => game.health[player.id] <= 0)) {
-          game.status = "finished";
-        } else {
-          game.round += 1;
-          game.status = "playing";
-          game.guesses = {};
-          game.ready = {};
-          game.result = null;
-          game.deadline = Date.now() + 60_000;
-        }
-      }
+      if (route.room.players.every((player) => game.ready[player.id])) advanceRound(route.room);
       route.room.updatedAt = Date.now();
       return send(response, 200, { game: gameView(route.room, body.playerId) });
     }
