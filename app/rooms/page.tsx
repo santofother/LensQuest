@@ -9,6 +9,7 @@ type RoomSummary = {
   playerCount: number;
   maxPlayers: number;
   status: "waiting" | "full";
+  gameStatus: "playing" | "reveal" | "finished" | null;
   createdAt: number;
 };
 
@@ -37,6 +38,7 @@ export default function RoomsPage() {
   const [activeRoom, setActiveRoom] = useState<RoomDetail | null>(null);
   const [message, setMessage] = useState("Connecting to the private room server…");
   const [busy, setBusy] = useState(false);
+  const [health, setHealth] = useState(7000);
 
   useEffect(() => {
     const savedName = window.localStorage.getItem("lensquest-player-name");
@@ -65,6 +67,11 @@ export default function RoomsPage() {
     const timer = window.setInterval(refresh, 3000);
     return () => { cancelled = true; window.clearInterval(timer); };
   }, [membership]);
+
+  useEffect(() => {
+    if (!membership || !activeRoom?.gameStatus) return;
+    window.location.href = `/rooms/game?room=${membership.roomId}&player=${membership.playerId}`;
+  }, [membership, activeRoom?.gameStatus]);
 
   async function createRoom() {
     if (!playerName.trim()) return setMessage("Choose your player name first.");
@@ -118,6 +125,32 @@ export default function RoomsPage() {
     }
   }
 
+  async function startPrivateGame() {
+    if (!membership || !activeRoom || activeRoom.playerCount !== 2) return;
+    setBusy(true);
+    setMessage("Preparing a shared photograph deck…");
+    try {
+      const responses = await Promise.all(["/commons-locations.json", "/worldwide-locations.json"].map(async (url) => {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error("Photograph library unavailable");
+        return response.json() as Promise<Array<{ id: string; lat: number; lng: number }>>;
+      }));
+      const deck = responses.flat()
+        .filter((item) => item && typeof item.id === "string" && Number.isFinite(item.lat) && Number.isFinite(item.lng))
+        .sort(() => Math.random() - 0.5)
+        .slice(0, 80)
+        .map(({ id, lat, lng }) => ({ id, lat, lng }));
+      await api(`/rooms/${membership.roomId}/start`, {
+        method: "POST",
+        body: JSON.stringify({ playerId: membership.playerId, health, deck }),
+      });
+      window.location.href = `/rooms/game?room=${membership.roomId}&player=${membership.playerId}`;
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Could not start the game");
+      setBusy(false);
+    }
+  }
+
   return (
     <main className="rooms-screen">
       <header className="rooms-header">
@@ -155,7 +188,13 @@ export default function RoomsPage() {
               <div className="lobby-seats">
                 {[0, 1].map((index) => <div key={index} className={activeRoom?.players[index] ? "lobby-seat lobby-seat--filled" : "lobby-seat"}><span>{index + 1}</span><strong>{activeRoom?.players[index]?.name || "Waiting for friend…"}</strong></div>)}
               </div>
-              <p>{activeRoom?.playerCount === 2 ? "Both players are connected. Live round synchronization is the next multiplayer step." : "Share the room ID and access code with your friend."}</p>
+              {membership.code && (
+                <div className="lobby-start-controls">
+                  <label><span>Starting health</span><select value={health} onChange={(event) => setHealth(Number(event.target.value))}><option value={3000}>Blitz · 3,000 HP</option><option value={7000}>Classic · 7,000 HP</option><option value={12000}>Expedition · 12,000 HP</option></select></label>
+                  <button className="primary-button" type="button" disabled={busy || activeRoom?.playerCount !== 2} onClick={startPrivateGame}>{activeRoom?.playerCount === 2 ? "Start private duel" : "Waiting for friend"}</button>
+                </div>
+              )}
+              <p>{activeRoom?.playerCount === 2 ? membership.code ? "Both players are connected. Start when you are ready." : "Waiting for the host to start the duel." : "Share the room ID and access code with your friend."}</p>
               <button className="text-button" type="button" onClick={leaveRoom}>Leave room</button>
             </div>
           ) : rooms.length ? (

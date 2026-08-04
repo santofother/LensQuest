@@ -26,6 +26,6 @@ The game is also available locally at `http://localhost:3000` unless `LENSQUEST_
 
 ## Multiplayer status
 
-The Docker build enables the private room browser at `/rooms`. Players can host rooms, share a room ID plus four-digit access code, join, leave, and see lobby presence. Rooms live in server memory and expire after six hours; restarting the multiplayer container clears them.
+The Docker build enables private friend matches at `/rooms`. Players can host rooms, share a room ID plus four-digit access code, join, choose the health mode, and start a synchronized duel. Photographs, guesses, reply timers, damage, health, and round advancement are coordinated by the multiplayer service.
 
-The lobby layer is the foundation for friend matches. Synchronizing the photograph, guesses, timers, health, and round results between both browsers is the next implementation phase.
+Rooms and active matches live in server memory and expire after six hours; restarting the multiplayer container clears them.

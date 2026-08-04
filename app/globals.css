@@ -770,11 +770,70 @@ a { color: inherit; }
 .lobby-seat > span { align-items: center; border: 1px solid rgba(255,255,255,.12); border-radius: 50%; display: flex; height: 25px; justify-content: center; width: 25px; }
 .lobby-seat--filled { background: rgba(91,210,198,.06); border-style: solid; color: #eeeae2; }
 .active-lobby > p { color: var(--muted); font-size: 10px; margin: 15px 0; }
+.lobby-start-controls { align-items: end; display: grid; gap: 10px; grid-template-columns: 1fr 1fr; margin-top: 14px; }
+.lobby-start-controls label { display: flex; flex-direction: column; gap: 6px; }
+.lobby-start-controls label span { color: var(--muted); font-size: 9px; letter-spacing: .08em; text-transform: uppercase; }
+.lobby-start-controls select { background: #101210; border: 1px solid var(--line); border-radius: 8px; color: white; padding: 11px; }
 .room-dialog-backdrop { align-items: center; background: rgba(0,0,0,.76); display: flex; inset: 0; justify-content: center; padding: 20px; position: fixed; z-index: 80; }
 .room-dialog { background: #171916; border: 1px solid rgba(255,255,255,.16); border-radius: 16px; box-shadow: 0 30px 100px #000; padding: 22px; width: min(100%, 390px); }
 .room-dialog h2 { font-family: var(--font-display); font-size: 22px; margin: 8px 0 18px; }
 .room-dialog input { font-size: 18px; letter-spacing: .16em; width: 100%; }
 .room-dialog > div { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+
+.private-game-loading, .private-game-finish { align-items: center; display: flex; flex-direction: column; gap: 24px; justify-content: center; min-height: 100svh; text-align: center; }
+.private-game-loading > a { color: var(--muted); font-size: 11px; }
+.private-game-finish section { background: var(--panel); border: 1px solid var(--line); border-radius: 18px; padding: 38px; width: min(92vw, 540px); }
+.private-game-finish h1 { font-family: var(--font-display); font-size: 64px; margin: 14px 0; }
+.private-game-finish p { color: var(--muted); margin-bottom: 24px; }
+.private-game-finish .primary-button { display: block; text-decoration: none; }
+.private-game-screen { min-height: 100svh; padding: 0 18px 18px; }
+.private-game-header { align-items: center; display: grid; grid-template-columns: 1fr auto 1fr; height: 70px; }
+.private-game-header .brand em { color: var(--muted); font-size: 9px; font-style: normal; margin-left: 8px; }
+.private-game-header > div:nth-child(2) { align-items: center; display: flex; gap: 10px; }
+.private-game-header > div:nth-child(2) span { color: var(--muted); font-size: 9px; text-transform: uppercase; }
+.private-game-header > div:nth-child(2) strong { background: rgba(245,200,91,.08); border: 1px solid rgba(245,200,91,.2); border-radius: 8px; color: var(--yellow); min-width: 56px; padding: 9px; text-align: center; }
+.private-game-header > a { color: var(--muted); font-size: 10px; justify-self: end; }
+.private-health { align-items: center; display: grid; gap: 20px; grid-template-columns: 1fr auto 1fr; margin: 0 auto 12px; max-width: 1120px; }
+.private-health > div { display: grid; gap: 5px; grid-template-columns: 1fr auto; }
+.private-health span, .private-health strong { font-size: 10px; }
+.private-health i { background: #292b28; border-radius: 99px; grid-column: 1 / -1; height: 7px; overflow: hidden; }
+.private-health b { background: var(--aqua); border-radius: inherit; display: block; height: 100%; transition: width .5s ease; }
+.private-health > div:last-child b { background: var(--orange); }
+.private-health > em { color: #666; font-size: 9px; font-style: normal; }
+.private-game-grid { display: grid; gap: 14px; grid-template-columns: minmax(0, 1.35fr) minmax(460px, 1fr); margin: 0 auto; max-width: 1660px; }
+.private-photo, .private-guess-card { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; height: calc(100svh - 112px); margin: 0; min-height: 0; overflow: hidden; position: relative; }
+.private-photo { background: #070807; }
+.private-photo > img { height: 100%; object-fit: contain; width: 100%; }
+.private-photo::after { background: linear-gradient(transparent 60%, rgba(0,0,0,.88)); content: ""; inset: 0; pointer-events: none; position: absolute; }
+.private-photo figcaption { align-items: end; bottom: 0; display: flex; justify-content: space-between; left: 0; padding: 22px; position: absolute; right: 0; z-index: 2; }
+.private-photo figcaption > span { color: rgba(255,255,255,.6); font-size: 9px; letter-spacing: .08em; text-transform: uppercase; }
+.private-photo figcaption > div { display: flex; flex-direction: column; text-align: right; }
+.private-photo figcaption strong { font-family: var(--font-display); font-size: 17px; }
+.private-photo figcaption small { color: rgba(255,255,255,.6); margin-top: 4px; }
+.private-guess-card { display: flex; flex-direction: column; padding: 18px; }
+.private-guess-heading { align-items: start; display: flex; justify-content: space-between; margin-bottom: 14px; }
+.private-guess-heading h2 { font-family: var(--font-display); font-size: 20px; margin: 5px 0 0; }
+.private-guess-heading > span { color: var(--yellow); font-size: 9px; }
+.private-world-map { aspect-ratio: 2 / 1; background: #091314; border: 1px solid rgba(255,255,255,.14); border-radius: 10px; cursor: crosshair; overflow: hidden; position: relative; width: 100%; }
+.private-world-map > img { display: block; height: 100%; object-fit: fill; pointer-events: none; width: 100%; }
+.private-world-map--locked { cursor: default; }
+.private-map-pin { color: white; font-size: 7px; font-style: normal; position: absolute; transform: translate(-50%, -50%); white-space: nowrap; }
+.private-map-pin b { border: 1.5px solid white; border-radius: 50%; box-shadow: 0 2px 5px #000; display: block; height: 9px; margin: 0 auto 2px; width: 9px; }
+.private-map-pin--you b { background: var(--aqua); }
+.private-map-pin--opponent b { background: var(--orange); }
+.private-map-pin--target b { background: var(--yellow); }
+.private-lock-area { display: flex; flex: 1; flex-direction: column; justify-content: end; padding-top: 14px; }
+.private-lock-area p { color: var(--muted); font-size: 10px; }
+.private-result { display: grid; gap: 8px; grid-template-columns: 1fr 1fr; padding-top: 12px; }
+.private-result > div, .private-result > p { background: #20221f; border: 1px solid var(--line); border-radius: 9px; display: flex; flex-direction: column; gap: 5px; margin: 0; padding: 10px; }
+.private-result span { color: var(--muted); font-size: 8px; text-transform: uppercase; }
+.private-result strong { font-family: var(--font-display); font-size: 14px; }
+.private-result > p, .private-result > button { grid-column: 1 / -1; }
+
+@media (max-width: 1050px) {
+  .private-game-grid { grid-template-columns: 1fr; }
+  .private-photo, .private-guess-card { height: auto; min-height: 62vh; }
+}
 
 @media (max-width: 760px) {
   .rooms-screen { padding-inline: 14px; }
@@ -782,6 +841,13 @@ a { color: inherit; }
   .rooms-hero h1 { font-size: 46px; }
   .rooms-layout { grid-template-columns: 1fr; }
   .lobby-seats { grid-template-columns: 1fr; }
+  .lobby-start-controls { grid-template-columns: 1fr; }
+  .private-game-header { grid-template-columns: 1fr auto; }
+  .private-game-header > div:nth-child(2) { justify-self: end; }
+  .private-game-header > a { display: none; }
+  .private-game-screen { padding-inline: 10px; }
+  .private-photo { min-height: 52vh; }
+  .private-guess-card { min-height: 0; }
 }
 
 @media (min-width: 1051px) and (max-height: 900px) {
