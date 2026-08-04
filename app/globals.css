@@ -179,6 +179,22 @@ a { color: inherit; }
 .primary-button--large { justify-content: space-between; margin-top: 8px; min-height: 58px; width: 100%; }
 .primary-button--large span { font-size: 22px; }
 .start-panel__note { color: #686a66; font-size: 10px; margin: 14px 0 0; text-align: center; }
+.player-name-field { display: flex; flex-direction: column; gap: 7px; margin-bottom: 10px; }
+.player-name-field > span { color: #d7d7d2; font-size: 11px; font-weight: 650; }
+.player-name-field input {
+  background: #131513;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--ink);
+  font-family: var(--font-display);
+  font-size: 13px;
+  height: 42px;
+  outline: none;
+  padding: 0 13px;
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+.player-name-field input::placeholder { color: #686a66; }
+.player-name-field input:focus { border-color: var(--aqua); box-shadow: 0 0 0 3px rgba(101,214,195,.1); }
 .matchmaking-preview {
   align-items: center;
   background: linear-gradient(110deg, rgba(101,214,195,.09), rgba(245,200,91,.05));

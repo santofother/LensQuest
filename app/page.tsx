@@ -35,30 +35,38 @@ type MatchOpponent = {
   hue: number;
 };
 
-const FIRST_NAMES = [
-  "Alex", "Amina", "Andre", "Anika", "Arjun", "Ben", "Camila", "Carson", "Chloe", "Daan",
-  "Dalia", "Daniel", "Diego", "Elias", "Elena", "Emi", "Eva", "Felix", "Freya", "Gabriel",
-  "Hana", "Hugo", "Imani", "Iris", "Isaac", "Jasper", "Jonah", "Julia", "Kai", "Lena",
-  "Leo", "Lina", "Luca", "Mara", "Mateo", "Maya", "Mina", "Nadia", "Naomi", "Nico",
-  "Noah", "Nora", "Omar", "Priya", "Rafael", "Remy", "Rina", "Sam", "Sara", "Sofia",
-  "Theo", "Yara", "Yuki", "Zara",
+const USERNAME_PREFIXES = [
+  "alpine", "amber", "atlas", "blue", "cedar", "cloudy", "coastal", "cosmic", "dawn", "desert",
+  "distant", "dusk", "electric", "faded", "fast", "foggy", "geo", "golden", "hidden", "indigo",
+  "island", "juniper", "late", "lens", "little", "lunar", "map", "metro", "misty", "mossy",
+  "neon", "night", "north", "open", "orange", "pixel", "polar", "quiet", "rapid", "red",
+  "river", "roaming", "rocky", "silver", "soft", "solar", "south", "stormy", "tiny", "urban",
+  "velvet", "vivid", "wandering", "wild",
 ] as const;
 
-const LAST_NAMES = [
-  "Andersen", "Bennett", "Berg", "Brooks", "Chen", "Costa", "Cruz", "Dahl", "Diaz", "Dubois",
-  "Evans", "Fischer", "Flores", "Garcia", "Grant", "Gupta", "Haddad", "Hall", "Ito", "Ivanov",
-  "Jensen", "Khan", "Kim", "Kovac", "Laurent", "Lee", "Lopez", "Martin", "Meier", "Mendoza",
-  "Miller", "Moreau", "Nakamura", "Novak", "Okafor", "Park", "Patel", "Petrov", "Reed", "Rossi",
-  "Santos", "Schmidt", "Silva", "Singh", "Sokolov", "Tanaka", "Taylor", "Torres", "Vega", "Walker",
-  "Wang", "Weber", "Wilson", "Young",
+const USERNAME_SUFFIXES = [
+  "Atlas", "Badger", "Beacon", "Cam", "Cloud", "Compass", "Coyote", "Drift", "Dune", "Echo",
+  "Falcon", "Fern", "Finder", "Fox", "Frame", "Globe", "Harbor", "Horizon", "Journey", "Lens",
+  "Lynx", "Map", "Marten", "Moth", "Nomad", "Orbit", "Otter", "Owl", "Path", "Peak",
+  "Pixel", "Quest", "Raven", "Ridge", "River", "Roamer", "Route", "Scout", "Shutter", "Sky",
+  "Sparrow", "Summit", "Trail", "Traveler", "Trek", "Valley", "View", "Voyager", "Wanderer", "Wave",
+  "Wayfinder", "Wolf", "World", "Yak",
 ] as const;
 
 function makeOpponent(playerRating: number, usedNames: Set<string>): MatchOpponent {
-  let name = "Alex Morgan";
+  let name = "pixelNomad42";
   for (let attempt = 0; attempt < 20; attempt += 1) {
-    const first = FIRST_NAMES[Math.floor(Math.random() * FIRST_NAMES.length)];
-    const last = LAST_NAMES[Math.floor(Math.random() * LAST_NAMES.length)];
-    name = `${first} ${last}`;
+    const prefix = USERNAME_PREFIXES[Math.floor(Math.random() * USERNAME_PREFIXES.length)];
+    const suffix = USERNAME_SUFFIXES[Math.floor(Math.random() * USERNAME_SUFFIXES.length)];
+    const number = 2 + Math.floor(Math.random() * 97);
+    const style = Math.floor(Math.random() * 4);
+    name = style === 0
+      ? `${prefix}${suffix}${number}`
+      : style === 1
+        ? `${prefix}_${suffix.toLowerCase()}`
+        : style === 2
+          ? `${suffix}${number}`
+          : `${prefix}.${suffix.toLowerCase()}`;
     if (!usedNames.has(name)) break;
   }
   usedNames.add(name);
@@ -66,7 +74,7 @@ function makeOpponent(playerRating: number, usedNames: Set<string>): MatchOppone
   const level: BotLevelId = rating < 925 ? "wanderer" : rating > 1175 ? "oracle" : "rival";
   return {
     name,
-    initials: name.split(" ").map((part) => part[0]).join(""),
+    initials: name.replace(/[^a-z0-9]/gi, "").slice(0, 2).toUpperCase(),
     rating,
     level,
     hue: Math.floor(Math.random() * 360),
@@ -591,6 +599,7 @@ export default function Home() {
   const [firstLocker, setFirstLocker] = useState<"player" | "bot" | null>(null);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [playerRating, setPlayerRating] = useState(1000);
+  const [playerName, setPlayerName] = useState("Explorer");
   const [opponent, setOpponent] = useState<MatchOpponent | null>(null);
   const [queueSeconds, setQueueSeconds] = useState(0);
   const [queueDelay, setQueueDelay] = useState(5);
@@ -605,6 +614,7 @@ export default function Home() {
   const selectedBot = BOT_LEVELS.find((bot) => bot.id === botId) ?? BOT_LEVELS[1];
   const opponentName = opponent?.name ?? "Opponent";
   const opponentRating = opponent?.rating ?? playerRating;
+  const displayName = playerName.trim() || "Explorer";
   const location = deck[(round - 1) % deck.length];
   const target = useMemo(() => ({ lat: location.lat, lng: location.lng }), [location]);
   const multiplier = 1 + Math.floor((round - 1) / 2) * 0.5;
@@ -668,6 +678,8 @@ export default function Home() {
     try {
       const savedRating = Number(window.localStorage.getItem("lensquest-rating"));
       if (Number.isFinite(savedRating) && savedRating >= 100) setPlayerRating(Math.round(savedRating));
+      const savedName = window.localStorage.getItem("lensquest-player-name")?.trim();
+      if (savedName) setPlayerName(savedName.slice(0, 20));
     } catch {
       // Private browsing can disable storage; matchmaking still works for the session.
     }
@@ -783,6 +795,11 @@ export default function Home() {
 
   function startMatchmaking() {
     if (libraryState === "loading") return;
+    try {
+      window.localStorage.setItem("lensquest-player-name", displayName);
+    } catch {
+      // The chosen name still works for the current session.
+    }
     setQueueSeconds(0);
     setQueueDelay(4 + Math.floor(Math.random() * 5));
     setQueueMatch(null);
@@ -878,6 +895,18 @@ export default function Home() {
             You have 60 seconds—once someone locks, their rival gets only seconds to answer.
           </p>
 
+          <label className="player-name-field">
+            <span>Player name</span>
+            <input
+              type="text"
+              value={playerName}
+              maxLength={20}
+              autoComplete="username"
+              placeholder="Choose a display name"
+              onChange={(event) => setPlayerName(event.target.value)}
+            />
+          </label>
+
           <div className="matchmaking-preview">
             <div className="rating-emblem"><span>Your rating</span><strong>{playerRating}</strong></div>
             <div>
@@ -938,8 +967,8 @@ export default function Home() {
 
           <div className="queue-versus">
             <div className="queue-player">
-              <div className="match-avatar match-avatar--you">YOU</div>
-              <strong>You</strong>
+              <div className="match-avatar match-avatar--you">{displayName.replace(/[^a-z0-9]/gi, "").slice(0, 2).toUpperCase() || "EX"}</div>
+              <strong>{displayName}</strong>
               <span>{playerRating} rating</span>
             </div>
             <div className="queue-vs"><span>VS</span><i /><i /><i /></div>
@@ -981,7 +1010,7 @@ export default function Home() {
             <em>{ratingChange === null ? "Calculating" : `${ratingChange >= 0 ? "+" : ""}${ratingChange}`}</em>
           </div>
           <div className="final-health">
-            <HealthBar label={`You · ${playerRating}`} value={playerHealth} maximum={selectedMode.health} tone="player" />
+            <HealthBar label={`${displayName} · ${playerRating}`} value={playerHealth} maximum={selectedMode.health} tone="player" />
             <HealthBar label={`${opponentName} · ${opponentRating}`} value={botHealth} maximum={selectedMode.health} tone="bot" />
           </div>
           <div className="end-actions">
@@ -1032,7 +1061,7 @@ export default function Home() {
       </header>
 
       <section className="battle-strip">
-        <HealthBar label={`You · ${playerRating}`} value={playerHealth} maximum={selectedMode.health} tone="player" />
+        <HealthBar label={`${displayName} · ${playerRating}`} value={playerHealth} maximum={selectedMode.health} tone="player" />
         <div className="versus">VS</div>
         <HealthBar label={`${opponentName} · ${opponentRating}`} value={botHealth} maximum={selectedMode.health} tone="bot" />
       </section>
