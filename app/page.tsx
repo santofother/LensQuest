@@ -220,7 +220,8 @@ function WorldGuessMap({
       const nextZoom = Math.max(1, Math.min(5, Number((zoom + direction * step).toFixed(2))));
       if (nextZoom === zoom) return;
 
-      const bounds = mapElement.getBoundingClientRect();
+      const bounds = mapRef.current?.getBoundingClientRect();
+      if (!bounds) return;
       const pointerX = event.clientX - bounds.left;
       const pointerY = event.clientY - bounds.top;
       const worldOffsetX = (pointerX - bounds.width / 2 - pan.x) / zoom;
@@ -395,7 +396,8 @@ function PhotoClue({
       const nextZoom = Math.max(1, Math.min(6, Number((zoom + direction * step).toFixed(2))));
       if (nextZoom === zoom) return;
 
-      const bounds = viewer.getBoundingClientRect();
+      const bounds = viewerRef.current?.getBoundingClientRect();
+      if (!bounds) return;
       const pointerX = event.clientX - bounds.left;
       const pointerY = event.clientY - bounds.top;
       const imageX = (pointerX - bounds.width / 2 - pan.x) / zoom;
