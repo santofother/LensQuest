@@ -801,7 +801,7 @@ export default function Home() {
           round={round}
         />
 
-        <aside className="guess-panel">
+        <aside className={`guess-panel ${phase === "reveal" ? "guess-panel--reveal" : ""}`}>
           <div className="guess-panel__heading">
             <div>
               <span className="caption-label">{phase === "reveal" ? "Round result" : phase === "waiting" ? "Guess locked" : "Your move"}</span>
