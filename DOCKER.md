@@ -15,8 +15,10 @@ The stack contains four services:
 4. Start the stack:
 
    ```sh
-   docker compose up -d --build
+   ./build.sh
    ```
+
+The script validates Docker and the tunnel token, pulls the latest fast-forward Git update, rebuilds the stack, and prints container status. Use `./build.sh --no-pull` when you intentionally want to rebuild the current checkout without pulling.
 
 The game is also available locally at `http://localhost:3000` unless `LENSQUEST_PORT` is changed.
 
