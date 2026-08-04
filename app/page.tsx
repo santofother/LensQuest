@@ -19,9 +19,9 @@ const HEALTH_MODES = [
 ] as const;
 
 const BOT_LEVELS = [
-  { id: "wanderer", label: "Wanderer", error: 3600, blunderChance: 0.38, detail: "Erratic · 38% blunder chance" },
-  { id: "rival", label: "Rival", error: 1500, blunderChance: 0.24, detail: "Beatable · 24% blunder chance" },
-  { id: "oracle", label: "Oracle", error: 620, blunderChance: 0.14, detail: "Sharp · 14% blunder chance" },
+  { id: "wanderer", label: "Wanderer", error: 3600, blunderChance: 0.38, detail: "Unpredictable explorer" },
+  { id: "rival", label: "Rival", error: 1500, blunderChance: 0.24, detail: "Steady competition" },
+  { id: "oracle", label: "Oracle", error: 620, blunderChance: 0.14, detail: "Sharp world traveler" },
 ] as const;
 
 const BLUNDER_DISTANCES = [3000, 5000, 10000] as const;
@@ -1138,12 +1138,6 @@ export default function Home() {
               <div className="waiting-panel__pulse" />
               <span>You locked first</span>
               <strong>{opponentName} has {timeLeft} seconds</strong>
-              {quickLockPressure > 0 && (
-                <div className="quick-lock-badge">
-                  <span>Quick-lock pressure</span>
-                  <strong>+{Math.round(quickLockPressure * QUICK_LOCK_BLUNDER_BONUS * 100)}% blunder chance</strong>
-                </div>
-              )}
               <p>The round reveals as soon as your opponent commits.</p>
             </div>
           ) : (
