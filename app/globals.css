@@ -613,7 +613,12 @@ a { color: inherit; }
 .waiting-panel p { color: var(--muted); font-size: 11px; margin: 7px 0 0; }
 @keyframes waiting-pulse { 0% { box-shadow: 0 0 0 0 rgba(255,118,87,.55); } 100% { box-shadow: 0 0 0 14px rgba(255,118,87,0); } }
 .result-panel { display: flex; flex-direction: column; flex: 1; justify-content: end; padding-top: 18px; }
-.guess-panel--reveal .world-map { aspect-ratio: auto; height: clamp(100px, 18svh, 160px); }
+.guess-panel--reveal .world-map {
+  aspect-ratio: 16 / 10;
+  height: auto;
+  margin-inline: auto;
+  width: min(100%, 300px);
+}
 .guess-panel--reveal .map-key { padding-top: 5px; }
 .guess-panel--reveal .result-panel { flex: 0 0 auto; justify-content: start; padding-top: 10px; }
 .guess-panel--reveal .distance-grid > div,
