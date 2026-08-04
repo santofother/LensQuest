@@ -630,13 +630,13 @@ a { color: inherit; }
 @keyframes waiting-pulse { 0% { box-shadow: 0 0 0 0 rgba(255,118,87,.55); } 100% { box-shadow: 0 0 0 14px rgba(255,118,87,0); } }
 .result-panel { display: flex; flex-direction: column; flex: 1; justify-content: end; padding-top: 18px; }
 .guess-panel--reveal .world-map {
-  aspect-ratio: 16 / 10;
+  aspect-ratio: 2 / 1;
   height: auto;
-  margin-inline: auto;
-  width: min(100%, 300px);
+  margin-inline: 0;
+  width: 100%;
 }
 .guess-panel--reveal .map-key { padding-top: 5px; }
-.guess-panel--reveal .result-panel { flex: 0 0 auto; justify-content: start; padding-top: 10px; }
+.guess-panel--reveal .result-panel { flex: 1 1 auto; justify-content: end; padding-top: 12px; }
 .guess-panel--reveal .distance-grid > div,
 .guess-panel--reveal .damage-callout { padding: 9px 10px; }
 .lock-summary { color: #8d8f89; font-size: 9px; letter-spacing: .08em; margin-bottom: 8px; text-transform: uppercase; }
