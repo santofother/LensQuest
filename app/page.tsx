@@ -26,6 +26,7 @@ const BOT_LEVELS = [
 
 const BLUNDER_DISTANCES = [3000, 5000, 10000] as const;
 const QUICK_LOCK_BLUNDER_BONUS = 0.24;
+const MULTIPLAYER_ENABLED = process.env.NEXT_PUBLIC_MULTIPLAYER_ENABLED === "true";
 type SoundEffect = "start" | "lock" | "playerHit" | "botHit" | "neutral" | "advance";
 type BotLevelId = (typeof BOT_LEVELS)[number]["id"];
 type MatchOpponent = {
@@ -961,6 +962,11 @@ export default function Home() {
           <button className="primary-button primary-button--large" type="button" onClick={startMatchmaking} disabled={libraryState === "loading"}>
             {libraryState === "loading" ? "Loading world library…" : "Find an opponent"} <span>→</span>
           </button>
+          {MULTIPLAYER_ENABLED && (
+            <a className="private-rooms-button" href="/rooms">
+              Browse private friend rooms <span>→</span>
+            </a>
+          )}
           <p className="start-panel__note">
             {libraryState === "ready"
               ? "Curated photographs with visible geographic clues"
