@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { GAME_LOCATIONS, type GameLocation } from "./gameData";
 
 type Coordinates = { lat: number; lng: number };
-type GamePhase = "setup" | "guessing" | "waiting" | "reveal" | "gameover";
+type GamePhase = "setup" | "queue" | "guessing" | "waiting" | "reveal" | "gameover";
 type RoundResult = {
   playerDistance: number;
   botDistance: number;
@@ -26,6 +26,57 @@ const BOT_LEVELS = [
 
 const BLUNDER_DISTANCES = [3000, 5000, 10000] as const;
 type SoundEffect = "start" | "lock" | "playerHit" | "botHit" | "neutral" | "advance";
+type BotLevelId = (typeof BOT_LEVELS)[number]["id"];
+type MatchOpponent = {
+  name: string;
+  initials: string;
+  rating: number;
+  level: BotLevelId;
+  hue: number;
+};
+
+const FIRST_NAMES = [
+  "Alex", "Amina", "Andre", "Anika", "Arjun", "Ben", "Camila", "Carson", "Chloe", "Daan",
+  "Dalia", "Daniel", "Diego", "Elias", "Elena", "Emi", "Eva", "Felix", "Freya", "Gabriel",
+  "Hana", "Hugo", "Imani", "Iris", "Isaac", "Jasper", "Jonah", "Julia", "Kai", "Lena",
+  "Leo", "Lina", "Luca", "Mara", "Mateo", "Maya", "Mina", "Nadia", "Naomi", "Nico",
+  "Noah", "Nora", "Omar", "Priya", "Rafael", "Remy", "Rina", "Sam", "Sara", "Sofia",
+  "Theo", "Yara", "Yuki", "Zara",
+] as const;
+
+const LAST_NAMES = [
+  "Andersen", "Bennett", "Berg", "Brooks", "Chen", "Costa", "Cruz", "Dahl", "Diaz", "Dubois",
+  "Evans", "Fischer", "Flores", "Garcia", "Grant", "Gupta", "Haddad", "Hall", "Ito", "Ivanov",
+  "Jensen", "Khan", "Kim", "Kovac", "Laurent", "Lee", "Lopez", "Martin", "Meier", "Mendoza",
+  "Miller", "Moreau", "Nakamura", "Novak", "Okafor", "Park", "Patel", "Petrov", "Reed", "Rossi",
+  "Santos", "Schmidt", "Silva", "Singh", "Sokolov", "Tanaka", "Taylor", "Torres", "Vega", "Walker",
+  "Wang", "Weber", "Wilson", "Young",
+] as const;
+
+function makeOpponent(playerRating: number, usedNames: Set<string>): MatchOpponent {
+  let name = "Alex Morgan";
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const first = FIRST_NAMES[Math.floor(Math.random() * FIRST_NAMES.length)];
+    const last = LAST_NAMES[Math.floor(Math.random() * LAST_NAMES.length)];
+    name = `${first} ${last}`;
+    if (!usedNames.has(name)) break;
+  }
+  usedNames.add(name);
+  const rating = Math.max(650, Math.min(1800, playerRating + Math.round((Math.random() + Math.random() - 1) * 180)));
+  const level: BotLevelId = rating < 925 ? "wanderer" : rating > 1175 ? "oracle" : "rival";
+  return {
+    name,
+    initials: name.split(" ").map((part) => part[0]).join(""),
+    rating,
+    level,
+    hue: Math.floor(Math.random() * 360),
+  };
+}
+
+function calculateEloChange(playerRating: number, opponentRating: number, won: boolean) {
+  const expected = 1 / (1 + 10 ** ((opponentRating - playerRating) / 400));
+  return Math.round(32 * ((won ? 1 : 0) - expected));
+}
 
 const EARTH_IMAGE = "/world-map.webp";
 const BLOCKED_PHOTO_IDS = new Set([
@@ -353,13 +404,13 @@ function WorldGuessMap({
           <img src={EARTH_IMAGE} alt="Satellite photograph of Earth used as the guessing map" draggable={false} />
           <span className="world-map__shade" />
           {playerGuess && <Marker point={playerGuess} kind="player" label="You" />}
-          {revealed && botPoint && <Marker point={botPoint} kind="bot" label="Bot" />}
+          {revealed && botPoint && <Marker point={botPoint} kind="bot" label="Opponent" />}
           {revealed && <Marker point={target} kind="target" label="Location" />}
         </div>
       </div>
       <div className="map-key">
         <span><i className="key-dot key-dot--player" />You</span>
-        {revealed && <span><i className="key-dot key-dot--bot" />Bot</span>}
+        {revealed && <span><i className="key-dot key-dot--bot" />Opponent</span>}
         {revealed && <span><i className="key-dot key-dot--target" />Location</span>}
         <span className="map-credit">NASA Blue Marble</span>
       </div>
@@ -525,7 +576,7 @@ function PhotoClue({
 export default function Home() {
   const [phase, setPhase] = useState<GamePhase>("setup");
   const [modeId, setModeId] = useState<(typeof HEALTH_MODES)[number]["id"]>("classic");
-  const [botId, setBotId] = useState<(typeof BOT_LEVELS)[number]["id"]>("rival");
+  const [botId, setBotId] = useState<BotLevelId>("rival");
   const [locationPool, setLocationPool] = useState<GameLocation[]>([...GAME_LOCATIONS]);
   const [libraryState, setLibraryState] = useState<"loading" | "ready" | "fallback">("loading");
   const [deck, setDeck] = useState<GameLocation[]>(() => balancedShuffle(GAME_LOCATIONS));
@@ -539,11 +590,21 @@ export default function Home() {
   const [timeLeft, setTimeLeft] = useState(60);
   const [firstLocker, setFirstLocker] = useState<"player" | "bot" | null>(null);
   const [soundEnabled, setSoundEnabled] = useState(true);
+  const [playerRating, setPlayerRating] = useState(1000);
+  const [opponent, setOpponent] = useState<MatchOpponent | null>(null);
+  const [queueSeconds, setQueueSeconds] = useState(0);
+  const [queueDelay, setQueueDelay] = useState(5);
+  const [queueMatch, setQueueMatch] = useState<MatchOpponent | null>(null);
+  const [ratingChange, setRatingChange] = useState<number | null>(null);
   const resolvingRef = useRef(false);
   const audioContextRef = useRef<AudioContext | null>(null);
+  const usedOpponentNamesRef = useRef(new Set<string>());
+  const ratingAppliedRef = useRef(false);
 
   const selectedMode = HEALTH_MODES.find((mode) => mode.id === modeId) ?? HEALTH_MODES[1];
   const selectedBot = BOT_LEVELS.find((bot) => bot.id === botId) ?? BOT_LEVELS[1];
+  const opponentName = opponent?.name ?? "Opponent";
+  const opponentRating = opponent?.rating ?? playerRating;
   const location = deck[(round - 1) % deck.length];
   const target = useMemo(() => ({ lat: location.lat, lng: location.lng }), [location]);
   const multiplier = 1 + Math.floor((round - 1) / 2) * 0.5;
@@ -604,6 +665,15 @@ export default function Home() {
   }, [phase, round]);
 
   useEffect(() => {
+    try {
+      const savedRating = Number(window.localStorage.getItem("lensquest-rating"));
+      if (Number.isFinite(savedRating) && savedRating >= 100) setPlayerRating(Math.round(savedRating));
+    } catch {
+      // Private browsing can disable storage; matchmaking still works for the session.
+    }
+  }, []);
+
+  useEffect(() => {
     let active = true;
     Promise.all(
       ["/commons-locations.json", "/worldwide-locations.json"].map((url) =>
@@ -633,6 +703,39 @@ export default function Home() {
       active = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (phase !== "queue") return;
+    let startTimer: number | undefined;
+    const queueClock = window.setInterval(() => setQueueSeconds((seconds) => seconds + 1), 1000);
+    const matchTimer = window.setTimeout(() => {
+      const matchedOpponent = makeOpponent(playerRating, usedOpponentNamesRef.current);
+      setQueueMatch(matchedOpponent);
+      setOpponent(matchedOpponent);
+      setBotId(matchedOpponent.level);
+      startTimer = window.setTimeout(startGame, 1300);
+    }, queueDelay * 1000);
+
+    return () => {
+      window.clearInterval(queueClock);
+      window.clearTimeout(matchTimer);
+      if (startTimer) window.clearTimeout(startTimer);
+    };
+  }, [phase, queueDelay]);
+
+  useEffect(() => {
+    if (phase !== "gameover" || !opponent || ratingAppliedRef.current) return;
+    ratingAppliedRef.current = true;
+    const change = calculateEloChange(playerRating, opponent.rating, botHealth <= 0);
+    const nextRating = Math.max(100, playerRating + change);
+    setRatingChange(change);
+    setPlayerRating(nextRating);
+    try {
+      window.localStorage.setItem("lensquest-rating", String(nextRating));
+    } catch {
+      // Keep the session rating even when persistent storage is unavailable.
+    }
+  }, [phase, opponent, playerRating, botHealth]);
 
   useEffect(() => {
     if (phase !== "guessing" && phase !== "waiting") return;
@@ -677,6 +780,16 @@ export default function Home() {
     setBotPoint(finalBotPoint);
     resolveRound(finalPlayerPoint, finalBotPoint);
   }, [timeLeft, phase]);
+
+  function startMatchmaking() {
+    if (libraryState === "loading") return;
+    setQueueSeconds(0);
+    setQueueDelay(4 + Math.floor(Math.random() * 5));
+    setQueueMatch(null);
+    setRatingChange(null);
+    ratingAppliedRef.current = false;
+    setPhase("queue");
+  }
 
   function startGame() {
     const health = selectedMode.health;
@@ -745,6 +858,7 @@ export default function Home() {
     setResult(null);
     setTimeLeft(60);
     setFirstLocker(null);
+    setQueueMatch(null);
     resolvingRef.current = false;
     playSound("advance");
     setPhase("guessing");
@@ -760,9 +874,17 @@ export default function Home() {
           <h1>See the frame.<br />Survive the world.</h1>
           <p className="start-panel__intro">
             Read the light, landscape, weather, and architecture. Place your guess,
-            outsmart the bot, and protect your health as every round grows deadlier.
+            outsmart your opponent, and protect your health as every round grows deadlier.
             You have 60 seconds—once someone locks, their rival gets only seconds to answer.
           </p>
+
+          <div className="matchmaking-preview">
+            <div className="rating-emblem"><span>Your rating</span><strong>{playerRating}</strong></div>
+            <div>
+              <strong>Practice League</strong>
+              <span>Match with a similarly rated opponent and climb the ladder.</span>
+            </div>
+          </div>
 
           <fieldset className="choice-group">
             <legend>Choose your health</legend>
@@ -782,25 +904,8 @@ export default function Home() {
             </div>
           </fieldset>
 
-          <fieldset className="choice-group">
-            <legend>Choose your rival</legend>
-            <div className="choice-grid choice-grid--three">
-              {BOT_LEVELS.map((bot) => (
-                <button
-                  type="button"
-                  key={bot.id}
-                  className={botId === bot.id ? "choice-card choice-card--active" : "choice-card"}
-                  onClick={() => setBotId(bot.id)}
-                >
-                  <strong>{bot.label}</strong>
-                  <span>{bot.detail}</span>
-                </button>
-              ))}
-            </div>
-          </fieldset>
-
-          <button className="primary-button primary-button--large" type="button" onClick={startGame} disabled={libraryState === "loading"}>
-            {libraryState === "loading" ? "Loading world library…" : "Begin the duel"} <span>→</span>
+          <button className="primary-button primary-button--large" type="button" onClick={startMatchmaking} disabled={libraryState === "loading"}>
+            {libraryState === "loading" ? "Loading world library…" : "Find an opponent"} <span>→</span>
           </button>
           <p className="start-panel__note">
             {libraryState === "ready"
@@ -814,6 +919,49 @@ export default function Home() {
     );
   }
 
+  if (phase === "queue") {
+    const searchRange = Math.min(220, 40 + queueSeconds * 25);
+    const queueMessage = queueSeconds < 2
+      ? "Checking nearby ratings"
+      : queueSeconds < 5
+        ? "Searching the active pool"
+        : "Expanding the search range";
+    return (
+      <main className={`queue-screen ${queueMatch ? "queue-screen--matched" : ""}`}>
+        <div className="queue-screen__glow" aria-hidden="true" />
+        <div className="brand"><span className="brand__mark" />LensQuest <em>Practice League</em></div>
+        <section className="queue-card" aria-live="polite">
+          <div className="queue-radar" aria-hidden="true"><i /><i /><i /><span /></div>
+          <div className="eyebrow">Rating-based matchmaking</div>
+          <h1>{queueMatch ? "Opponent found." : "Finding your rival…"}</h1>
+          <p>{queueMatch ? "Locking in the duel." : `${queueMessage} within ±${searchRange} rating.`}</p>
+
+          <div className="queue-versus">
+            <div className="queue-player">
+              <div className="match-avatar match-avatar--you">YOU</div>
+              <strong>You</strong>
+              <span>{playerRating} rating</span>
+            </div>
+            <div className="queue-vs"><span>VS</span><i /><i /><i /></div>
+            <div className={`queue-player ${queueMatch ? "queue-player--found" : ""}`}>
+              <div
+                className="match-avatar"
+                style={queueMatch ? { "--avatar-hue": queueMatch.hue } as React.CSSProperties : undefined}
+              >
+                {queueMatch ? queueMatch.initials : "?"}
+              </div>
+              <strong>{queueMatch?.name ?? "Searching…"}</strong>
+              <span>{queueMatch ? `${queueMatch.rating} rating` : "Similar rating"}</span>
+            </div>
+          </div>
+
+          <div className="queue-progress"><span style={{ width: `${queueMatch ? 100 : Math.min(88, 18 + queueSeconds * 11)}%` }} /></div>
+          <button className="text-button" type="button" onClick={() => setPhase("setup")}>Cancel search</button>
+        </section>
+      </main>
+    );
+  }
+
   if (phase === "gameover") {
     const won = botHealth <= 0;
     return (
@@ -821,18 +969,23 @@ export default function Home() {
         <div className="brand"><span className="brand__mark" />LensQuest</div>
         <section className="end-card">
           <div className="eyebrow">Duel complete · {round} rounds</div>
-          <h1>{won ? "You survived." : "The world won this time."}</h1>
+          <h1>{won ? "Victory." : "Defeat."}</h1>
           <p>
             {won
-              ? `${selectedBot.label} ran out of health first. Your eye for place held up under pressure.`
-              : `${selectedBot.label} landed the final hit. Study the clues and come back sharper.`}
+              ? `${opponentName} ran out of health first. Your eye for place held up under pressure.`
+              : `${opponentName} landed the final hit. Study the clues and come back sharper.`}
           </p>
+          <div className={`rating-result ${ratingChange !== null && ratingChange >= 0 ? "rating-result--up" : "rating-result--down"}`}>
+            <span>League rating</span>
+            <strong>{playerRating}</strong>
+            <em>{ratingChange === null ? "Calculating" : `${ratingChange >= 0 ? "+" : ""}${ratingChange}`}</em>
+          </div>
           <div className="final-health">
-            <HealthBar label="You" value={playerHealth} maximum={selectedMode.health} tone="player" />
-            <HealthBar label={selectedBot.label} value={botHealth} maximum={selectedMode.health} tone="bot" />
+            <HealthBar label={`You · ${playerRating}`} value={playerHealth} maximum={selectedMode.health} tone="player" />
+            <HealthBar label={`${opponentName} · ${opponentRating}`} value={botHealth} maximum={selectedMode.health} tone="bot" />
           </div>
           <div className="end-actions">
-            <button className="primary-button" type="button" onClick={startGame}>Play again</button>
+            <button className="primary-button" type="button" onClick={startMatchmaking}>Find next opponent</button>
             <button className="text-button" type="button" onClick={() => setPhase("setup")}>Change mode</button>
           </div>
         </section>
@@ -861,7 +1014,7 @@ export default function Home() {
         <div className="round-status">
           <div className="round-chip">Round {round} <strong>×{multiplier.toFixed(1)}</strong></div>
           <div className={`timer-chip ${timeLeft <= 10 ? "timer-chip--urgent" : ""}`}>
-            <span>{phase === "waiting" ? "Bot reply" : firstLocker === "bot" ? "Your reply" : "Time"}</span>
+            <span>{phase === "waiting" ? "Opponent reply" : firstLocker === "bot" ? "Your reply" : "Time"}</span>
             <strong>0:{String(timeLeft).padStart(2, "0")}</strong>
           </div>
         </div>
@@ -879,9 +1032,9 @@ export default function Home() {
       </header>
 
       <section className="battle-strip">
-        <HealthBar label="You" value={playerHealth} maximum={selectedMode.health} tone="player" />
+        <HealthBar label={`You · ${playerRating}`} value={playerHealth} maximum={selectedMode.health} tone="player" />
         <div className="versus">VS</div>
-        <HealthBar label={selectedBot.label} value={botHealth} maximum={selectedMode.health} tone="bot" />
+        <HealthBar label={`${opponentName} · ${opponentRating}`} value={botHealth} maximum={selectedMode.health} tone="bot" />
       </section>
 
       <section className="game-grid">
@@ -913,11 +1066,11 @@ export default function Home() {
           {phase === "guessing" ? (
             <div className="guess-actions">
               {firstLocker === "bot" && (
-                <div className="bot-lock-alert"><span>Bot locked</span><strong>Answer now</strong></div>
+                <div className="bot-lock-alert"><span>Opponent locked</span><strong>Answer now</strong></div>
               )}
               <p>
                 {firstLocker === "bot"
-                  ? `The bot locked first. You have ${timeLeft} seconds to answer.`
+                  ? `${opponentName} locked first. You have ${timeLeft} seconds to answer.`
                   : playerPoint
                     ? "Pin placed. Zoom, pan, refine it, or lock in your guess."
                     : "Tap the satellite photograph to place your pin."}
@@ -930,21 +1083,21 @@ export default function Home() {
             <div className="waiting-panel">
               <div className="waiting-panel__pulse" />
               <span>You locked first</span>
-              <strong>{selectedBot.label} has {timeLeft} seconds</strong>
-              <p>The round reveals as soon as the bot commits.</p>
+              <strong>{opponentName} has {timeLeft} seconds</strong>
+              <p>The round reveals as soon as your opponent commits.</p>
             </div>
           ) : (
             <div className="result-panel">
               <div className="lock-summary">
-                {firstLocker === "player" ? "You locked first" : firstLocker === "bot" ? `${selectedBot.label} locked first` : "Time expired"}
+                {firstLocker === "player" ? "You locked first" : firstLocker === "bot" ? `${opponentName} locked first` : "Time expired"}
               </div>
-              {botBlunder && <div className="blunder-badge"><span>Bot blunder</span><strong>Wild miss!</strong></div>}
+              {botBlunder && <div className="blunder-badge"><span>Opponent blunder</span><strong>Wild miss!</strong></div>}
               <div className="distance-grid">
                 <div><span>Your distance</span><strong>{formatDistance(result?.playerDistance ?? 0)}</strong></div>
-                <div><span>Bot distance</span><strong>{formatDistance(result?.botDistance ?? 0)}</strong></div>
+                <div><span>Opponent distance</span><strong>{formatDistance(result?.botDistance ?? 0)}</strong></div>
               </div>
               <div className={`damage-callout damage-callout--${result?.damaged ?? "none"}`}>
-                <span>{result?.damaged === "player" ? "You take" : result?.damaged === "bot" ? `${selectedBot.label} takes` : "Dead heat"}</span>
+                <span>{result?.damaged === "player" ? "You take" : result?.damaged === "bot" ? `${opponentName} takes` : "Dead heat"}</span>
                 <strong>{result?.damaged === "none" ? "No damage" : `${result?.damage.toLocaleString()} damage`}</strong>
               </div>
               <button className="primary-button" type="button" onClick={continueGame}>
