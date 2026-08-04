@@ -200,7 +200,7 @@ function WorldGuessMap({
   useEffect(() => {
     setZoom(1);
     setPan({ x: 0, y: 0 });
-  }, [target.lat, target.lng]);
+  }, [target.lat, target.lng, revealed]);
 
   useEffect(() => {
     const mapElement = mapRef.current;
@@ -367,6 +367,11 @@ function PhotoClue({
   const viewerRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef({ active: false, startX: 0, startY: 0, panX: 0, panY: 0 });
 
+  useEffect(() => {
+    setZoom(1);
+    setPan({ x: 0, y: 0 });
+  }, [location.id, revealed]);
+
   function constrainedPan(next: { x: number; y: number }, atZoom = zoom) {
     const bounds = viewerRef.current?.getBoundingClientRect();
     if (!bounds || atZoom <= 1) return { x: 0, y: 0 };
@@ -525,6 +530,19 @@ export default function Home() {
   const location = deck[(round - 1) % deck.length];
   const target = useMemo(() => ({ lat: location.lat, lng: location.lng }), [location]);
   const multiplier = 1 + Math.floor((round - 1) / 2) * 0.5;
+
+  useEffect(() => {
+    const preventBrowserZoom = (event: WheelEvent) => {
+      if (event.ctrlKey) event.preventDefault();
+    };
+
+    window.addEventListener("wheel", preventBrowserZoom, { passive: false });
+    return () => window.removeEventListener("wheel", preventBrowserZoom);
+  }, []);
+
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, [phase, round]);
 
   useEffect(() => {
     let active = true;

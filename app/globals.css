@@ -68,7 +68,7 @@ a { color: inherit; }
 }
 
 .start-screen {
-  min-height: 100vh;
+  min-height: 100svh;
   display: grid;
   grid-template-columns: minmax(320px, 0.95fr) minmax(560px, 1.05fr);
   overflow: hidden;
@@ -79,7 +79,7 @@ a { color: inherit; }
     linear-gradient(90deg, transparent 68%, #0d0e0d 100%),
     linear-gradient(0deg, rgba(9, 11, 10, 0.28), rgba(9, 11, 10, 0.05)),
     url("https://santophotos.fothergill.com/fun%20photos-fo%20prints/DSCF3330.jpg") center / cover;
-  min-height: 100vh;
+  min-height: 100svh;
   position: relative;
 }
 
@@ -180,7 +180,7 @@ a { color: inherit; }
 .primary-button--large span { font-size: 22px; }
 .start-panel__note { color: #686a66; font-size: 10px; margin: 14px 0 0; text-align: center; }
 
-.game-screen { min-height: 100vh; padding: 0 28px 28px; }
+.game-screen { height: 100svh; min-height: 620px; overflow: hidden; padding: 0 28px 20px; }
 .game-header { align-items: center; display: grid; grid-template-columns: 1fr auto 1fr; height: 68px; }
 .game-header .brand { justify-self: start; }
 .round-chip {
@@ -248,7 +248,8 @@ a { color: inherit; }
   background: #070807;
   border: 1px solid var(--line);
   border-radius: 16px;
-  min-height: calc(100vh - 142px);
+  height: calc(100svh - 138px);
+  min-height: 0;
   overflow: hidden;
   position: relative;
 }
@@ -361,7 +362,8 @@ a { color: inherit; }
   border-radius: 16px;
   display: flex;
   flex-direction: column;
-  min-height: calc(100vh - 142px);
+  height: calc(100svh - 138px);
+  min-height: 0;
   padding: 20px;
 }
 .guess-panel__heading { align-items: start; display: flex; justify-content: space-between; margin-bottom: 17px; }
@@ -465,10 +467,36 @@ a { color: inherit; }
 
 @media (max-width: 1050px) {
   .start-screen { grid-template-columns: .75fr 1.25fr; }
+  .game-screen { height: auto; min-height: 100svh; overflow: visible; }
   .game-grid { grid-template-columns: 1fr; }
-  .photo-stage { min-height: 64vh; }
-  .guess-panel { min-height: auto; }
+  .photo-stage { height: auto; min-height: 64vh; }
+  .guess-panel { height: auto; min-height: auto; }
   .guess-actions, .result-panel { padding-top: 26px; }
+}
+
+@media (min-width: 761px) and (max-height: 900px) {
+  .start-panel { padding: 20px clamp(28px, 4vw, 64px); }
+  .start-panel .brand { margin-bottom: clamp(16px, 3vh, 28px); }
+  .start-panel h1 { font-size: clamp(40px, 4.7vw, 62px); margin: 10px 0 14px; }
+  .start-panel__intro { font-size: 13px; line-height: 1.45; margin-bottom: 18px; }
+  .choice-group { margin-bottom: 14px; }
+  .choice-group legend { margin-bottom: 6px; }
+  .choice-card { min-height: 68px; padding: 10px 12px; }
+  .choice-card strong { font-size: 13px; }
+  .choice-card span { font-size: 11px; margin-top: 3px; }
+  .choice-card small { font-size: 9px; padding-top: 3px; }
+  .primary-button--large { margin-top: 2px; min-height: 48px; }
+  .start-panel__note { margin-top: 7px; }
+}
+
+@media (min-width: 1051px) and (max-height: 900px) {
+  .game-header { height: 58px; }
+  .battle-strip { margin-bottom: 10px; }
+  .photo-stage, .guess-panel { height: calc(100svh - 116px); }
+  .guess-panel { padding: 14px; }
+  .guess-panel__heading { margin-bottom: 10px; }
+  .guess-actions { padding-top: 12px; }
+  .result-panel { padding-top: 10px; }
 }
 
 @media (max-width: 760px) {
