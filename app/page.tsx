@@ -19,10 +19,13 @@ const HEALTH_MODES = [
 ] as const;
 
 const BOT_LEVELS = [
-  { id: "wanderer", label: "Wanderer", error: 3600, detail: "Still learning the terrain" },
-  { id: "rival", label: "Rival", error: 1500, detail: "Sharp, but beatable" },
-  { id: "oracle", label: "Oracle", error: 620, detail: "Knows the world frighteningly well" },
+  { id: "wanderer", label: "Wanderer", error: 3600, blunderChance: 0.38, detail: "Erratic · 38% blunder chance" },
+  { id: "rival", label: "Rival", error: 1500, blunderChance: 0.24, detail: "Beatable · 24% blunder chance" },
+  { id: "oracle", label: "Oracle", error: 620, blunderChance: 0.14, detail: "Sharp · 14% blunder chance" },
 ] as const;
+
+const BLUNDER_DISTANCES = [3000, 5000, 10000] as const;
+type SoundEffect = "start" | "lock" | "playerHit" | "botHit" | "neutral" | "advance";
 
 const EARTH_IMAGE = "/world-map.webp";
 const BLOCKED_PHOTO_IDS = new Set([
@@ -102,9 +105,13 @@ function distanceKm(a: Coordinates, b: Coordinates) {
   return radius * 2 * Math.atan2(Math.sqrt(value), Math.sqrt(1 - value));
 }
 
-function botGuess(target: Coordinates, typicalError: number): Coordinates {
+function botGuess(target: Coordinates, typicalError: number, blunderChance: number) {
   const bearing = Math.random() * Math.PI * 2;
-  const distance = typicalError * (0.35 + Math.random() * 1.05);
+  const blundered = Math.random() < blunderChance;
+  const blunderDistance = BLUNDER_DISTANCES[Math.floor(Math.random() * BLUNDER_DISTANCES.length)];
+  const distance = blundered
+    ? blunderDistance * (0.9 + Math.random() * 0.2)
+    : typicalError * (0.35 + Math.random() * 1.05);
   const angular = distance / 6371;
   const startLat = radians(target.lat);
   const startLng = radians(target.lng);
@@ -119,7 +126,10 @@ function botGuess(target: Coordinates, typicalError: number): Coordinates {
       Math.cos(angular) - Math.sin(startLat) * Math.sin(lat),
     );
 
-  return { lat: degrees(lat), lng: ((degrees(lng) + 540) % 360) - 180 };
+  return {
+    point: { lat: degrees(lat), lng: ((degrees(lng) + 540) % 360) - 180 },
+    blundered,
+  };
 }
 
 function formatDistance(value: number) {
@@ -524,16 +534,61 @@ export default function Home() {
   const [botHealth, setBotHealth] = useState(7000);
   const [playerPoint, setPlayerPoint] = useState<Coordinates | null>(null);
   const [botPoint, setBotPoint] = useState<Coordinates | null>(null);
+  const [botBlunder, setBotBlunder] = useState(false);
   const [result, setResult] = useState<RoundResult | null>(null);
   const [timeLeft, setTimeLeft] = useState(60);
   const [firstLocker, setFirstLocker] = useState<"player" | "bot" | null>(null);
+  const [soundEnabled, setSoundEnabled] = useState(true);
   const resolvingRef = useRef(false);
+  const audioContextRef = useRef<AudioContext | null>(null);
 
   const selectedMode = HEALTH_MODES.find((mode) => mode.id === modeId) ?? HEALTH_MODES[1];
   const selectedBot = BOT_LEVELS.find((bot) => bot.id === botId) ?? BOT_LEVELS[1];
   const location = deck[(round - 1) % deck.length];
   const target = useMemo(() => ({ lat: location.lat, lng: location.lng }), [location]);
   const multiplier = 1 + Math.floor((round - 1) / 2) * 0.5;
+
+  function playSound(effect: SoundEffect) {
+    if (!soundEnabled || typeof window === "undefined") return;
+    const context = audioContextRef.current ?? new AudioContext();
+    audioContextRef.current = context;
+    void context.resume();
+    const now = context.currentTime;
+
+    function tone(frequency: number, offset: number, duration: number, type: OscillatorType, volume: number, endFrequency = frequency) {
+      const oscillator = context.createOscillator();
+      const gain = context.createGain();
+      oscillator.type = type;
+      oscillator.frequency.setValueAtTime(frequency, now + offset);
+      oscillator.frequency.exponentialRampToValueAtTime(Math.max(30, endFrequency), now + offset + duration);
+      gain.gain.setValueAtTime(0.0001, now + offset);
+      gain.gain.exponentialRampToValueAtTime(volume, now + offset + 0.015);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + offset + duration);
+      oscillator.connect(gain).connect(context.destination);
+      oscillator.start(now + offset);
+      oscillator.stop(now + offset + duration + 0.02);
+    }
+
+    if (effect === "start") {
+      tone(330, 0, 0.18, "sine", 0.045, 420);
+      tone(494, 0.11, 0.2, "sine", 0.05, 620);
+      tone(659, 0.23, 0.28, "triangle", 0.045, 830);
+    } else if (effect === "lock") {
+      tone(700, 0, 0.09, "square", 0.025, 520);
+      tone(420, 0.1, 0.12, "triangle", 0.035, 350);
+    } else if (effect === "playerHit") {
+      tone(145, 0, 0.28, "sawtooth", 0.065, 48);
+      tone(82, 0.06, 0.34, "square", 0.035, 35);
+    } else if (effect === "botHit") {
+      tone(260, 0, 0.16, "triangle", 0.05, 520);
+      tone(520, 0.12, 0.22, "sine", 0.055, 780);
+    } else if (effect === "neutral") {
+      tone(360, 0, 0.16, "sine", 0.035, 320);
+    } else {
+      tone(420, 0, 0.11, "sine", 0.035, 560);
+      tone(640, 0.09, 0.16, "triangle", 0.035, 760);
+    }
+  }
 
   useEffect(() => {
     const preventBrowserZoom = (event: WheelEvent) => {
@@ -591,20 +646,24 @@ export default function Home() {
     if (phase !== "guessing" || botPoint) return;
     const thinkTime = 10000 + Math.random() * 18000;
     const botLockTimer = window.setTimeout(() => {
-      setBotPoint(botGuess(target, selectedBot.error));
+      const generatedGuess = botGuess(target, selectedBot.error, selectedBot.blunderChance);
+      setBotPoint(generatedGuess.point);
+      setBotBlunder(generatedGuess.blundered);
       setFirstLocker("bot");
       setTimeLeft((seconds) => Math.min(seconds, 12));
+      playSound("lock");
     }, thinkTime);
     return () => window.clearTimeout(botLockTimer);
-  }, [phase, round, botPoint, selectedBot.error, target]);
+  }, [phase, round, botPoint, selectedBot.error, selectedBot.blunderChance, target]);
 
   useEffect(() => {
     if (phase !== "waiting" || !playerPoint) return;
     const responseDelay = 2500 + Math.random() * 2500;
     const responseTimer = window.setTimeout(() => {
-      const generatedBotPoint = botGuess(target, selectedBot.error);
-      setBotPoint(generatedBotPoint);
-      resolveRound(playerPoint, generatedBotPoint);
+      const generatedGuess = botGuess(target, selectedBot.error, selectedBot.blunderChance);
+      setBotPoint(generatedGuess.point);
+      setBotBlunder(generatedGuess.blundered);
+      resolveRound(playerPoint, generatedGuess.point);
     }, responseDelay);
     return () => window.clearTimeout(responseTimer);
   }, [phase, round]);
@@ -612,7 +671,9 @@ export default function Home() {
   useEffect(() => {
     if (timeLeft > 0 || (phase !== "guessing" && phase !== "waiting")) return;
     const finalPlayerPoint = playerPoint ?? { lat: 0, lng: 0 };
-    const finalBotPoint = botPoint ?? botGuess(target, selectedBot.error);
+    const generatedGuess = botPoint ? null : botGuess(target, selectedBot.error, selectedBot.blunderChance);
+    const finalBotPoint = botPoint ?? generatedGuess!.point;
+    if (generatedGuess) setBotBlunder(generatedGuess.blundered);
     setBotPoint(finalBotPoint);
     resolveRound(finalPlayerPoint, finalBotPoint);
   }, [timeLeft, phase]);
@@ -625,10 +686,12 @@ export default function Home() {
     setBotHealth(health);
     setPlayerPoint(null);
     setBotPoint(null);
+    setBotBlunder(false);
     setResult(null);
     setTimeLeft(60);
     setFirstLocker(null);
     resolvingRef.current = false;
+    playSound("start");
     setPhase("guessing");
   }
 
@@ -653,11 +716,13 @@ export default function Home() {
     setPlayerPoint(finalPlayerPoint);
     setBotPoint(finalBotPoint);
     setResult({ playerDistance, botDistance, damage, damaged });
+    playSound(damaged === "player" ? "playerHit" : damaged === "bot" ? "botHit" : "neutral");
     setPhase("reveal");
   }
 
   function lockGuess() {
     if (!playerPoint || phase !== "guessing") return;
+    playSound("lock");
     if (botPoint) {
       resolveRound(playerPoint, botPoint);
       return;
@@ -676,10 +741,12 @@ export default function Home() {
     setRound((value) => value + 1);
     setPlayerPoint(null);
     setBotPoint(null);
+    setBotBlunder(false);
     setResult(null);
     setTimeLeft(60);
     setFirstLocker(null);
     resolvingRef.current = false;
+    playSound("advance");
     setPhase("guessing");
   }
 
@@ -774,7 +841,21 @@ export default function Home() {
   }
 
   return (
-    <main className="game-screen">
+    <main className={`game-screen game-screen--${phase} ${phase === "reveal" ? `game-screen--impact-${result?.damaged ?? "none"}` : ""}`}>
+      {phase === "guessing" && (
+        <div className="round-intro" key={`round-intro-${round}`} aria-hidden="true">
+          <span>Round</span>
+          <strong>{round}</strong>
+        </div>
+      )}
+      {phase === "reveal" && result && (
+        <div className={`round-impact round-impact--${result.damaged}`} aria-hidden="true">
+          <i className="round-impact__ring" />
+          {Array.from({ length: 12 }, (_, index) => (
+            <i key={index} className="round-impact__spark" style={{ "--spark-index": index } as React.CSSProperties} />
+          ))}
+        </div>
+      )}
       <header className="game-header">
         <div className="brand"><span className="brand__mark" />LensQuest</div>
         <div className="round-status">
@@ -784,7 +865,17 @@ export default function Home() {
             <strong>0:{String(timeLeft).padStart(2, "0")}</strong>
           </div>
         </div>
-        <button className="quit-button" type="button" onClick={() => setPhase("setup")}>End duel</button>
+        <div className="header-actions">
+          <button
+            className="sound-button"
+            type="button"
+            aria-pressed={soundEnabled}
+            onClick={() => setSoundEnabled((enabled) => !enabled)}
+          >
+            {soundEnabled ? "Sound on" : "Sound off"}
+          </button>
+          <button className="quit-button" type="button" onClick={() => setPhase("setup")}>End duel</button>
+        </div>
       </header>
 
       <section className="battle-strip">
@@ -821,6 +912,9 @@ export default function Home() {
 
           {phase === "guessing" ? (
             <div className="guess-actions">
+              {firstLocker === "bot" && (
+                <div className="bot-lock-alert"><span>Bot locked</span><strong>Answer now</strong></div>
+              )}
               <p>
                 {firstLocker === "bot"
                   ? `The bot locked first. You have ${timeLeft} seconds to answer.`
@@ -844,6 +938,7 @@ export default function Home() {
               <div className="lock-summary">
                 {firstLocker === "player" ? "You locked first" : firstLocker === "bot" ? `${selectedBot.label} locked first` : "Time expired"}
               </div>
+              {botBlunder && <div className="blunder-badge"><span>Bot blunder</span><strong>Wild miss!</strong></div>}
               <div className="distance-grid">
                 <div><span>Your distance</span><strong>{formatDistance(result?.playerDistance ?? 0)}</strong></div>
                 <div><span>Bot distance</span><strong>{formatDistance(result?.botDistance ?? 0)}</strong></div>
