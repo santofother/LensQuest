@@ -203,6 +203,10 @@ function WorldGuessMap({
   }, [target.lat, target.lng, revealed]);
 
   useEffect(() => {
+    if (locked || revealed || botPoint) setExpanded(false);
+  }, [locked, revealed, botPoint]);
+
+  useEffect(() => {
     const mapElement = mapRef.current;
     if (!mapElement) return;
 
