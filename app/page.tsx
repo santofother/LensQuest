@@ -25,6 +25,7 @@ const BOT_LEVELS = [
 ] as const;
 
 const BLUNDER_DISTANCES = [3000, 5000, 10000] as const;
+const QUICK_LOCK_BLUNDER_BONUS = 0.24;
 type SoundEffect = "start" | "lock" | "playerHit" | "botHit" | "neutral" | "advance";
 type BotLevelId = (typeof BOT_LEVELS)[number]["id"];
 type MatchOpponent = {
@@ -32,6 +33,8 @@ type MatchOpponent = {
   initials: string;
   rating: number;
   level: BotLevelId;
+  error: number;
+  blunderChance: number;
   hue: number;
 };
 
@@ -53,6 +56,14 @@ const USERNAME_SUFFIXES = [
   "Wayfinder", "Wolf", "World", "Yak",
 ] as const;
 
+function skillForRating(rating: number) {
+  const skill = Math.max(0, Math.min(1, (rating - 650) / 1150));
+  return {
+    error: Math.round(650 + 5000 * (1 - skill) ** 1.3),
+    blunderChance: Number((0.1 + 0.48 * (1 - skill) ** 1.1).toFixed(3)),
+  };
+}
+
 function makeOpponent(playerRating: number, usedNames: Set<string>): MatchOpponent {
   let name = "pixelNomad42";
   for (let attempt = 0; attempt < 20; attempt += 1) {
@@ -72,11 +83,14 @@ function makeOpponent(playerRating: number, usedNames: Set<string>): MatchOppone
   usedNames.add(name);
   const rating = Math.max(650, Math.min(1800, playerRating + Math.round((Math.random() + Math.random() - 1) * 180)));
   const level: BotLevelId = rating < 925 ? "wanderer" : rating > 1175 ? "oracle" : "rival";
+  const skill = skillForRating(rating);
   return {
     name,
     initials: name.replace(/[^a-z0-9]/gi, "").slice(0, 2).toUpperCase(),
     rating,
     level,
+    error: skill.error,
+    blunderChance: skill.blunderChance,
     hue: Math.floor(Math.random() * 360),
   };
 }
@@ -164,13 +178,15 @@ function distanceKm(a: Coordinates, b: Coordinates) {
   return radius * 2 * Math.atan2(Math.sqrt(value), Math.sqrt(1 - value));
 }
 
-function botGuess(target: Coordinates, typicalError: number, blunderChance: number) {
+function botGuess(target: Coordinates, typicalError: number, blunderChance: number, quickLockPressure = 0) {
   const bearing = Math.random() * Math.PI * 2;
-  const blundered = Math.random() < blunderChance;
+  const pressure = Math.max(0, Math.min(1, quickLockPressure));
+  const effectiveBlunderChance = Math.min(0.82, blunderChance + pressure * QUICK_LOCK_BLUNDER_BONUS);
+  const blundered = Math.random() < effectiveBlunderChance;
   const blunderDistance = BLUNDER_DISTANCES[Math.floor(Math.random() * BLUNDER_DISTANCES.length)];
   const distance = blundered
     ? blunderDistance * (0.9 + Math.random() * 0.2)
-    : typicalError * (0.35 + Math.random() * 1.05);
+    : typicalError * (0.5 + Math.random() * 1.15) * (1 + pressure * 0.55);
   const angular = distance / 6371;
   const startLat = radians(target.lat);
   const startLng = radians(target.lng);
@@ -597,6 +613,7 @@ export default function Home() {
   const [result, setResult] = useState<RoundResult | null>(null);
   const [timeLeft, setTimeLeft] = useState(60);
   const [firstLocker, setFirstLocker] = useState<"player" | "bot" | null>(null);
+  const [quickLockPressure, setQuickLockPressure] = useState(0);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [playerRating, setPlayerRating] = useState(1000);
   const [playerName, setPlayerName] = useState("Explorer");
@@ -612,6 +629,8 @@ export default function Home() {
 
   const selectedMode = HEALTH_MODES.find((mode) => mode.id === modeId) ?? HEALTH_MODES[1];
   const selectedBot = BOT_LEVELS.find((bot) => bot.id === botId) ?? BOT_LEVELS[1];
+  const botError = opponent?.error ?? selectedBot.error;
+  const botBlunderChance = opponent?.blunderChance ?? selectedBot.blunderChance;
   const opponentName = opponent?.name ?? "Opponent";
   const opponentRating = opponent?.rating ?? playerRating;
   const displayName = playerName.trim() || "Explorer";
@@ -761,7 +780,7 @@ export default function Home() {
     if (phase !== "guessing" || botPoint) return;
     const thinkTime = 10000 + Math.random() * 18000;
     const botLockTimer = window.setTimeout(() => {
-      const generatedGuess = botGuess(target, selectedBot.error, selectedBot.blunderChance);
+      const generatedGuess = botGuess(target, botError, botBlunderChance);
       setBotPoint(generatedGuess.point);
       setBotBlunder(generatedGuess.blundered);
       setFirstLocker("bot");
@@ -769,13 +788,13 @@ export default function Home() {
       playSound("lock");
     }, thinkTime);
     return () => window.clearTimeout(botLockTimer);
-  }, [phase, round, botPoint, selectedBot.error, selectedBot.blunderChance, target]);
+  }, [phase, round, botPoint, botError, botBlunderChance, target]);
 
   useEffect(() => {
     if (phase !== "waiting" || !playerPoint) return;
     const responseDelay = 2500 + Math.random() * 2500;
     const responseTimer = window.setTimeout(() => {
-      const generatedGuess = botGuess(target, selectedBot.error, selectedBot.blunderChance);
+      const generatedGuess = botGuess(target, botError, botBlunderChance, quickLockPressure);
       setBotPoint(generatedGuess.point);
       setBotBlunder(generatedGuess.blundered);
       resolveRound(playerPoint, generatedGuess.point);
@@ -786,7 +805,9 @@ export default function Home() {
   useEffect(() => {
     if (timeLeft > 0 || (phase !== "guessing" && phase !== "waiting")) return;
     const finalPlayerPoint = playerPoint ?? { lat: 0, lng: 0 };
-    const generatedGuess = botPoint ? null : botGuess(target, selectedBot.error, selectedBot.blunderChance);
+    const generatedGuess = botPoint
+      ? null
+      : botGuess(target, botError, botBlunderChance, phase === "waiting" ? quickLockPressure : 0);
     const finalBotPoint = botPoint ?? generatedGuess!.point;
     if (generatedGuess) setBotBlunder(generatedGuess.blundered);
     setBotPoint(finalBotPoint);
@@ -820,6 +841,7 @@ export default function Home() {
     setResult(null);
     setTimeLeft(60);
     setFirstLocker(null);
+    setQuickLockPressure(0);
     resolvingRef.current = false;
     playSound("start");
     setPhase("guessing");
@@ -857,6 +879,8 @@ export default function Home() {
       resolveRound(playerPoint, botPoint);
       return;
     }
+    const secondsUsed = 60 - timeLeft;
+    setQuickLockPressure(Math.max(0, Math.min(1, (35 - secondsUsed) / 30)));
     setFirstLocker("player");
     setTimeLeft(8);
     setPhase("waiting");
@@ -875,6 +899,7 @@ export default function Home() {
     setResult(null);
     setTimeLeft(60);
     setFirstLocker(null);
+    setQuickLockPressure(0);
     setQueueMatch(null);
     resolvingRef.current = false;
     playSound("advance");
@@ -911,7 +936,7 @@ export default function Home() {
             <div className="rating-emblem"><span>Your rating</span><strong>{playerRating}</strong></div>
             <div>
               <strong>Practice League</strong>
-              <span>Match with a similarly rated opponent and climb the ladder.</span>
+              <span>Match by rating, climb the ladder, and lock early to pressure your rival.</span>
             </div>
           </div>
 
@@ -1101,7 +1126,7 @@ export default function Home() {
                 {firstLocker === "bot"
                   ? `${opponentName} locked first. You have ${timeLeft} seconds to answer.`
                   : playerPoint
-                    ? "Pin placed. Zoom, pan, refine it, or lock in your guess."
+                    ? "Pin placed. Refine it, or lock early to pressure your opponent."
                     : "Tap the satellite photograph to place your pin."}
               </p>
               <button className="primary-button" type="button" disabled={!playerPoint} onClick={lockGuess}>
@@ -1113,6 +1138,12 @@ export default function Home() {
               <div className="waiting-panel__pulse" />
               <span>You locked first</span>
               <strong>{opponentName} has {timeLeft} seconds</strong>
+              {quickLockPressure > 0 && (
+                <div className="quick-lock-badge">
+                  <span>Quick-lock pressure</span>
+                  <strong>+{Math.round(quickLockPressure * QUICK_LOCK_BLUNDER_BONUS * 100)}% blunder chance</strong>
+                </div>
+              )}
               <p>The round reveals as soon as your opponent commits.</p>
             </div>
           ) : (
